@@ -52,7 +52,6 @@ def runWhole(csvFilePath):
     #convert date to datetime
     df['client_modified'] = pd.to_datetime(df['client_modified'], format = '%Y-%m-%d')
     
-    df.to_csv('/home/merde/Documents/greeneHill/dropbox_files.csv', index = False)
     posdates = df['filename'].str.split(r'-|_')
     
     test = posdates.apply(dateConvert)

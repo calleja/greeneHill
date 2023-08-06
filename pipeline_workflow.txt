@@ -1,0 +1,13 @@
+PIPELINE PROCESSES
+1) mem_type
+CIVI report: "Select Activity Details - Membership Related" -> ./membershipReportingLogic SampleReports/
+raw row count = ~ 6700
+ipynb: civiActivityReport.ipynb
+
+2) mem_status
+CIVI report:
+ipynb: 
+
+3) Shopping
+CIVI report: "Shopping Log - Activity Report"
+others: Store check-ins since turnstile install 

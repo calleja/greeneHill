@@ -1,7 +1,11 @@
+-- word wrap shortcut: shift+cntrl+alt+w
 show tables;
 
 show fields from mem_type;
-select * from mem_type limit 5;
+show fields from mem_status;
+select * from mem_type order by email, start_dt ASC limit 10;
+select * from mem_status order by email, start_dt ASC limit 60;
+select type from mem_status group by 1;
 /* latest_trial2 = json of latest trial recorded for that email addres (from date of report pull)
  * 
  * 
@@ -130,4 +134,5 @@ AND extract(year from start_dt) = 2023;
 
 -- count all new signups sans-trial
 
+-- join shopping data to mem_type data; later: freq of shopping for trial members, while in-trial, and relate to type conversions
 

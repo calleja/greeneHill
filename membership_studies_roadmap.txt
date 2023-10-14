@@ -10,3 +10,5 @@ TRIAL JOURNEY
 
 DURATION OF MEMBER OWNERS
 
+Time series of membership numbers
+

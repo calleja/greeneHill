@@ -1,6 +1,6 @@
 PIPELINE PROCESSES
 1) mem_type
-CIVI report: "Select Activity Details - Membership Related" -> ./membershipReportingLogic SampleReports/
+CIVI report: Contact Reports > "Select Activity Details - Membership Related" -> ./membershipReportingLogic SampleReports/
 raw row count = ~ 6700
 ipynb: civiActivityReport.ipynb
 
@@ -9,5 +9,16 @@ CIVI report:
 ipynb: 
 
 3) Shopping
-CIVI report: "Shopping Log - Activity Report"
+CIVI report: All Reports > Shopping Log - Activity Report
 others: Store check-ins since turnstile install 
+
+SCHEMA DESCRIPTION
+***mem_status***
+type	text: sequenced treated activity description ex. general_leave, trial_expiration
+type_raw	text: raw CIVI subject text (treated version is stored in type and type_clean fields)
+start_dt	datetime: activity date
+lead_date	datetime: start date of subsequent event
+datetimerange	text: python daterange text
+type_clean	text: second treated subject line
+email	text
+ingest_date	datetime: processing date

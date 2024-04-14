@@ -1,4 +1,4 @@
--- word wrap shortcut: shift+cntrl+alt+w
+-- word wrap shortcut for DBeaver: shift+cntrl+alt+w
 show tables;
 
 show fields from mem_type0101;
@@ -571,7 +571,7 @@ group by 1)
 order by mt_email, start_dt asc 
 limit 500;
 
--- misstated cases: the emails below do not carry an "active"-type activity_calc value, but are shown to be active per CIVI (active member report)
+-- mis-stated cases: the emails below do not carry an "active"-type activity_calc value, but are shown to be active per CIVI (active member report)
 WITH sj AS (
 SELECT sj.* 
 from stack_jobII sj

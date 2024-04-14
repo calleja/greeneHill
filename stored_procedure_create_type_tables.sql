@@ -51,10 +51,5 @@ WHERE row_num = 1;
 -- QA options: table length of 2nd temp table should be > records of pre-existing prod table and have a 'start_dt' range spanning beginning of legacy prod to end of latest table ingest
 -- these can be done in python
 
-SET @legacy_cnt = (select count(*) from consolidated_mem_type_temp2);
-SET @incremental_cnt = (select count(*) from consolidated_mem_type);
-
 END //
 DELIMITER ;
-
-CALL type_table_create();

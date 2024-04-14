@@ -51,4 +51,4 @@ WHERE row_num = 1;
 END //
 DELIMITER ;
 
-CALL status_table_create();
+-- CALL status_table_create();

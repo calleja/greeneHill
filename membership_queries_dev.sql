@@ -319,7 +319,7 @@ ON conversion_agg.month = all_agg.month
 group by 1
 order by 1 desc;
 
--- prod version of ipynb file
+-- prod version of ipynb file; this is a historical performance analysis
 WITH trial_conversions AS (
 -- returns the last trial (can be > 1)
 select cast(JSON_EXTRACT(latest_trial2, '$.start_dt') as date) trial_date, cast(start_dt as date) status_date, 
@@ -549,6 +549,7 @@ order by calendar_date asc;
 
 -- #3 aggregation: counting the number of active accounts on a daily basis
 -- this resultset looks off, will need to QA
+-- this MIGHT be what is ultimately fed into the ipynb file for visualization
 SELECT calendar_date, SUM(CASE WHEN activity_calc IN ('winback','initial enrollment','technical activation','technical reactivation','technical re-activation') THEN 1 ELSE 0 END) AS active_cnts, SUM(CASE WHEN activity_calc IN ('deactivated','parental leave','medical leave','care giving leave') THEN 1 ELSE 0 END) AS inactivte_cnts
 FROM stack_jobII sj
 INNER JOIN calendar cal ON calendar_date between start_dt AND lead_date 
@@ -633,8 +634,13 @@ order by mt_email, lead_date asc;
 
 -- investigate some emails from the above and determine if they were rightfully excluded from 'active' count as 12-1-2023
 SELECT *
-from mem_type_1204
-WHERE email IN ('aubreygrowsfood@gmail.com','cbm389@nyu.edu','luvness06@yahoo.com') 
+from consolidated_mem_status_temp2
+WHERE email IN ('1elsamaki@gmail.com') 
+order by email;
+
+SELECT *
+from consolidated_mem_type_temp2
+WHERE email IN ('1elsamaki@gmail.com') 
 order by email;
 
 SELECT *
@@ -724,7 +730,7 @@ WITH prep AS (
 SELECT CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(latest_trial2, '$.start_dt[0]')) = 'null' THEN NULL 
 ELSE CAST(JSON_UNQUOTE(JSON_EXTRACT(latest_trial2, '$.start_dt[0]')) as date) END AS trial_dt, 
 email, type_clean, start_dt, ingest_date, trial_expiration
-from mem_type_0101),
+from mem_type_0101), -- last working code pointed to table mem_type_0101
 -- conversions CTE composed of only non-trial records where there WAS an originating trial for the email account; ie successful conversions
 conversions AS (
 SELECT  trial_dt, datediff(cast(start_dt as date), prep.trial_dt) as date_difference,
@@ -794,24 +800,35 @@ LEFT JOIN above_avg ON overall.FirstDayOfWeek = above_avg.FirstDayOfWeek;
 -- surface the actual trial members likely to convert: trial members that have shopped since trial has begun and still in-trial
 -- partition/craft cohorts from trial start week
 -- member_directory is a table located in the db that is imported via its own pipeline: 'ingestMembershipContactInfo.ipynb'
+-- latest code should found in trial_shopping.sql
 WITH trips_data AS (
 SELECT STR_TO_DATE(CONCAT(yearweek(tsh.trial_start_dt),' Sunday'), '%X%V %W') FirstDayOfWeek, tsh.email, tsh.trips, tsh.trial_expiration, (SELECT avg(tsh_m.trips) ave
-from trialShoppingHabits tsh_m
+from trialShoppingHabits2 tsh_m
 WHERE tsh_m.relative_trial_period IN ('in trial','n/a')
 AND tsh_m.final_trial_flag = 'relevant trial'
 AND STR_TO_DATE(CONCAT(yearweek(tsh_m.trial_start_dt),' Sunday'), '%X%V %W') = STR_TO_DATE(CONCAT(yearweek(tsh.trial_start_dt),' Sunday'), '%X%V %W')) overall
-FROM trialShoppingHabits tsh 
+FROM trialShoppingHabits2 tsh 
 where tsh.relative_trial_period = 'in trial' 
 AND tsh.final_trial_flag = 'relevant trial'
 AND tsh.mo_type IS NULL) 
 SELECT td.*, md.*
 FROM trips_data td 
-LEFT JOIN member_directory md ON td.email = md.email 
+LEFT JOIN member_directorys md ON td.email = md.email 
 -- select for only those trial members that have # trips greater than avg for their cohort
 WHERE trips > overall 
 AND trips > 1 
-AND trial_expiration < date_add(curdate(), interval 14 day) 
+AND trial_expiration BETWEEN date_sub(curdate(), interval 35 day) AND date_add(curdate(), interval 10 day)
 order by firstDayOfWeek asc;
+
+
+-- QA: 12/31/2023 only has an average of 1, which doesn't make sense
+select STR_TO_DATE(CONCAT(yearweek(tsh_m.trial_start_dt),' Sunday'), '%X%V %W') FirstDayOfWeek, AVG(trips) avg_trips
+from trialShoppingHabits2 tsh_m
+where trial_start_dt between date('2023-12-31') AND date('2023-01-07');
+AND tsh_m.relative_trial_period IN ('in trial','n/a')
+AND tsh_m.final_trial_flag = 'relevant trial'
+group by 1 
+order by 1 asc;
 
 -- potentially missed opportunities? former trial members that did not convert but either shopped a lot during their trial or have shopped since their trial expired (but they never converted)
 

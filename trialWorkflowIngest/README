@@ -1,0 +1,8 @@
+program to run two data imports into the membership DB that serve as inputs to the "trial conversion" workflow.
+sql Tables:
+1) shop_log table (originally importe via ingestMemberShopping.ipynb)
+2) member_directory (originally imported via ingestMembershipContactInfo.ipynb)
+
+Purpose: this module will be called by an 'orchestration' .ipynb file along w/an sql script (trial_shopping.sql) that will ultimately deliver the target trial members
+
+Much of what I learned about building python projects and packaging them as modules came from https://realpython.com/python-modules-packages/ 

@@ -1,4 +1,11 @@
--- #1
+-- this script creates table stack_job2 from scratch (no deleting and infilling based on earliest start_dt like the stored procedures for the "consolidated" tables)
+-- stack job provides events of a member journey in long format; Original intent of this table was to track active member population (an interaction of mem status and mem type), including those suspended, on leave, etc. 
+-- trial related information is excluded from both feeder tables: mem_type and mem_status (in the case of the latter, events such as "trial conversion" & "trial expiration" are left off, which is OK because activity is only considered AFTER a member joins/converts)
+/* **************  Field Key
+- mt_cancel_flag = set to 'Y' when 'type_raw' contains the word "cancelled"; necessary bc a cancelled event was never recorded on the 'status' table
+
+
+*/
 -- join mem_status to mem_type, which is the only way to associate prevailing membership type (mem_typeXXX.type_clean) to mem_status activity; then stack so that each row is a membership event period for ea email (records having null values for mt_type_clean are mem_type original records; it's mem_status that will have non-null values)
 -- UPDATING STATEMENT to replace the "lead_date" for "TYPE" rows
 -- the lead and start_dt fields are exclusive to either type or status changes, this is bc I related all status changes to the prevailing type and I need the type range in order to accomplish that; this means I HAVE TO recompute the lead/start date post compilation
@@ -13,8 +20,7 @@ BEGIN
 
 DROP TABLE IF EXISTS stack_job2;
 
--- TODO: mt_cancel_flag is causing problems as it is later referenced and is included in a group by, and interpreted as a unique field. EXAMPLE: WHERE mt_email = '1elsamaki@gmail.com'
-
+-- join status to type: left join status to type when the status occurs within the range of start_dt & lead_dt of the status type
 CREATE TABLE stack_job2 AS
 WITH mt_ms AS (
 SELECT mt.email mt_email, mt.start_dt mt_start_dt, mt.lead_date mt_lead_date, mt.type_clean mt_type_clean, mt.type_raw mt_type_raw, mt.trial_expiration mt_trial_expiration, 
@@ -28,13 +34,20 @@ LEFT JOIN consolidated_mem_status ms ON mt.email = ms.email
 -- ensure that status records only populate on same line as the relevant type record
 AND ms.start_dt between mt.start_dt AND mt.lead_date
 order by mt.email, mt.start_dt asc, ms.start_dt asc),
--- stack the data; mt_type_clean = null signals records from original mt_type (part of the UNION)
+/* 
+stack the data: re-arrange the joined data from mt_ms 
+similar columns (by record significance, not necessarily name) from the LHS and RHS of the mt_ms join are stacked
+*type_clean* records from mem_status table record status change events
+*type_clean* records from mem_type table record new types of membership (including trial)
+mt_type_clean = null signals records from original mt_type (part of the UNION)
 -- excludes trial activity and only returns activity related to full member-owners
+*/
 stacked AS (
 SELECT mt_email, mt_start_dt start_dt, mt_lead_date lead_date, mt_type_clean activity, mt_type_clean mem_type, mt_type_raw type_raw, mt_cancel_flag
 FROM mt_ms
 WHERE mt_type_clean IN ('lettuce', 'carrot', 'household', 'avocado','apple')
 UNION ALL
+-- 
 SELECT mt_email, ms_start_dt start_dt, ms_lead_date lead_date, ms_type_clean activity, mt_type_clean mem_type, ms_type_raw type_raw, NULL mt_cancel_flag
 FROM mt_ms
 -- ms_type_clean values related to trial activity are '%trial%', 'cancelled', 'deactivated'

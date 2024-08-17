@@ -172,6 +172,14 @@ SELECT *
 FROM stack_jobII
 where mt_email IN('aubreygrowsfood@gmail.com');
 
+/*mem_type_1112,mem_status_1112
+consolidated_mem_status,consolidated_mem_type*/
+DROP TABLE consolidated_mem_type;
+DROP TABLE IF EXISTS consolidated_mem_type;
+DROP TABLE IF EXISTS consolidated_mem_status;
+CREATE TABLE consolidated_mem_type SELECT * FROM mem_type_1112;
+CREATE TABLE consolidated_status_type SELECT * FROM mem_status_1112;
+
 
 SELECT mt.email mt_email, mt.start_dt mt_start_dt, mt.lead_date mt_lead_date, mt.type_clean mt_type_clean, mt.type_raw mt_type_raw, mt.trial_expiration mt_trial_expiration, ms.start_dt ms_start_dt, ms.lead_date ms_lead_date, ms.type_clean ms_type_clean, ms.type_raw ms_type_raw  
 from mem_type_0927 mt
@@ -512,6 +520,17 @@ FROM stack_jobII
 WHERE mt_email IN ('achomet@gmail.com', 'amandabfriedman@gmail.com', 'anmuessig@gmail.com', 'bcgilman@gmail.com', 'irunwithscissorz@hotmail.com')
 ORDER BY mt_email, start_dt asc;
 
+-- QA: ensure that stored procedures properly bring all the lead_date forward to the appropriate date
+SELECT lead_date, count(*)
+FROM consolidated_mem_status_temp2
+GROUP BY 1
+ORDER BY 1 DESC;
+
+SELECT lead_date, count(*)
+FROM consolidated_mem_type_temp2
+GROUP BY 1
+ORDER BY 1 DESC;
+
 -- #2
 -- measure active members
 -- in order to graph the # of members in a timeseries, will need to join the above to the calendar table
@@ -548,23 +567,31 @@ WHERE mt_email = '16defazioe@gmail.com'
 order by calendar_date asc;
 
 -- #3 aggregation: counting the number of active accounts on a daily basis
--- this resultset looks off, will need to QA
 -- this MIGHT be what is ultimately fed into the ipynb file for visualization
-SELECT calendar_date, SUM(CASE WHEN activity_calc IN ('winback','initial enrollment','technical activation','technical reactivation','technical re-activation') THEN 1 ELSE 0 END) AS active_cnts, SUM(CASE WHEN activity_calc IN ('deactivated','parental leave','medical leave','care giving leave') THEN 1 ELSE 0 END) AS inactivte_cnts
-FROM stack_jobII sj
+-- the below ONLY includes FULL member-owners
+SELECT calendar_date, 
+SUM(CASE WHEN activity_calc IN ('winback','initial enrollment','technical activation','technical reactivation','technical re-activation') THEN 1 ELSE 0 END) AS active_cnts, 
+SUM(CASE WHEN activity_calc IN ('parental leave','medical leave','care giving leave') THEN 1 ELSE 0 END) AS temporary_inactivte, 
+SUM(CASE WHEN activity_calc IN ('cancelled','deactivated','deactive','suspended') THEN 1 ELSE 0 END) revoked,
+SUM(CASE WHEN activity_calc IN ('general leave') THEN 1 ELSE 0 END) general_leave, 
+SUM(CASE WHEN activity_calc IN ('winback') THEN 1 ELSE 0 END) winbacks
+FROM stack_job2 sj
 INNER JOIN calendar cal ON calendar_date between start_dt AND lead_date 
 GROUP BY 1 
 ORDER BY 1 desc;
 
 -- review records of those accounts that are not considered 'active' as of a certain date to ensure accuracy
--- I need to review three use cases: 1) those accounts that are found in the db tables AND the CIVI dataset, yet are NOT flagged as active in my logic; 2) accounts appearing in CIVI that are missing entirely from my db; 3) accounts flagged as active in the db but missing from CIVI
+/* I need to review three use cases: 
+1) those accounts that are found in the db tables AND the CIVI dataset, yet are NOT flagged as active in my logic; 2) accounts appearing in CIVI that are missing entirely from my db; 
+3) accounts flagged as active in the db but missing from CIVI
+*/
 -- the below accounts are NOT showing as active as of 12/1 when there is a case that they should be... this highlights the problem of cases where total_rows = 1 
 -- the query below returns all accounts that SHOULD NOT be considered active ao 12/1 according to the logic to-date
 SELECT * 
-FROM stack_jobII sj
+FROM stack_job2 sj
 WHERE mt_email NOT IN (
 SELECT sj.mt_email 
-FROM stack_jobII sj
+FROM stack_job2 sj
 INNER JOIN calendar cal ON calendar_date between start_dt AND lead_date 
 WHERE activity_calc IN ('winback','initial enrollment','technical activation','technical reactivation','technical re-activation')
 AND cal.calendar_date = DATE('2023-11-01') 
@@ -593,7 +620,7 @@ order by sj.mt_email, sj.start_dt asc;
 -- "active_roster" is the CIVI table (imported into db by way of 'ingestMemberShopping.ipynb'
 WITH total_set AS (
 SELECT sj.mt_email, sj.start_dt, sj.lead_date, sj.type_raw, sj.activity, sj.mem_type, sj.activity_calc, sj.row_num, sj.total_rows, ar.Email current_email  
-FROM stack_jobII sj
+FROM stack_job2 sj
 RIGHT JOIN active_roster ar ON trim(lower(sj.mt_email)) = trim(lower(ar.Email))
 group by 1,2,3,4,5,6,7,8,9,10)
 SELECT *
@@ -604,7 +631,7 @@ WHERE row_num = total_rows
 order by mt_email, lead_date asc;
 
 -- return the whole universe of active accounts (per the db logic AND CIVI)
--- "active_roster" is the CIVI table (imported into db by way of 'ingestMemberShopping.ipynb')
+-- "active_roster" is the CIVI table (imported into db by way of 'ingestMemberShopping.ipynb' - "Current Membership Detailed Report" <- as labeled in CIVI Reports)
 WITH total_set AS (
 SELECT sj.mt_email, sj.start_dt, sj.lead_date, sj.type_raw, sj.activity, sj.mem_type, sj.activity_calc, sj.row_num, sj.total_rows, ar.Email current_email  
 FROM stack_jobII sj
@@ -616,20 +643,15 @@ from total_set
 -- group by 1 
 order by mt_email, lead_date asc;
 
+-- more QA of active roster: 
+
+
 -- investigate cases of accounts not indicated as ACTIVE in stack_jobII
 SELECT *
 FROM stack_jobII sj
 WHERE mt_email IN ('oba1620@gmail.com','kevin@keogh.dev','aiisshiki@gmail.com','jmullen006@gmail.com',
 'akiko.ichikawa@gmail.com','cj@cirr.us','chrisgo22@gmail.com','varybl@gmail.com','ethan.rts@gmail.com') 
 order by mt_email, lead_date asc;
-
-
-SELECT *
-FROM stack_jobII sj
-WHERE mt_email IN ('oba1620@gmail.com','kevin@keogh.dev','aiisshiki@gmail.com','jmullen006@gmail.com',
-'akiko.ichikawa@gmail.com','cj@cirr.us','chrisgo22@gmail.com','varybl@gmail.com','ethan.rts@gmail.com') 
-order by mt_email, lead_date asc;
-
 
 
 -- investigate some emails from the above and determine if they were rightfully excluded from 'active' count as 12-1-2023
@@ -650,8 +672,9 @@ order by email;
 
 
 -- QA: exposes how "initial enrollment" is extremely inflated; fix this in the UPDATE statement above
+-- reveals the "mix" of members: those on initial enrollment, those wonback, etc
 SELECT activity_calc, count(*) cnt
-FROM stack_job sj
+FROM stack_job2 sj
 INNER JOIN calendar cal ON calendar_date between start_dt AND lead_date 
 WHERE cal.calendar_date = date('2023-11-05')
 AND activity_calc IN ('winback','initial enrollment','technical activation','technical reactivation','technical re-activation')
@@ -679,6 +702,305 @@ order by 1, 5 asc
 limit 200;
 
 -- END ACTIVE MEMBER TIME SERIES STUDY
+
+-- ACCOUNT FLOWS TABLE
+/* 
+BUCKETS: 1) starting membership, 2) Leave, 3) Return from Leave, 4) new signups, 5) trial converters
+this may require two snapshots: last day of previous month and last day of current month
+- trick is to handle same-month reversals (ex. signup then suspend)
+
+
+NOTE: In order for an account's activity to be reflected in the Accounts Flow Table, they must have been categorized as an ACTIVE member the previous month <- if that is not the case, then their inclusion will mess up the NET amounts... this may indicate that I'll need to vet each member at the member/email level and not at the "monthly" aggregate level as done here
+*/
+
+-- the below query returns a two row table of category/account values/freq by date ("current" and "prev")
+-- ****MUST BE RUN AS A SCRIPT IN DBEAVER*****
+SET @current = date('2024-05-31');
+SET @prev = date('2024-04-30');
+
+SELECT @current AS date,
+SUM(CASE WHEN activity_calc IN ('winback','initial enrollment','technical activation','technical reactivation','technical re-activation') THEN 1 ELSE 0 END) AS active_cnts, 
+SUM(CASE WHEN activity_calc IN ('parental leave','medical leave','care giving leave') THEN 1 ELSE 0 END) AS temporary_inactivte, 
+SUM(CASE WHEN activity_calc IN ('cancelled','deactivated','deactive','suspended') THEN 1 ELSE 0 END) revoked,
+SUM(CASE WHEN activity_calc IN ('general leave') THEN 1 ELSE 0 END) general_leave, 
+SUM(CASE WHEN activity_calc IN ('winback') THEN 1 ELSE 0 END) winbacks
+FROM stack_job2 sj
+WHERE @current between start_dt AND lead_date
+UNION
+SELECT @prev AS date, 
+SUM(CASE WHEN activity_calc IN ('winback','initial enrollment','technical activation','technical reactivation','technical re-activation') THEN 1 ELSE 0 END) AS active_cnts, 
+SUM(CASE WHEN activity_calc IN ('parental leave','medical leave','care giving leave') THEN 1 ELSE 0 END) AS temporary_inactivte, 
+SUM(CASE WHEN activity_calc IN ('cancelled','deactivated','deactive','suspended') THEN 1 ELSE 0 END) revoked,
+SUM(CASE WHEN activity_calc IN ('general leave') THEN 1 ELSE 0 END) general_leave, 
+SUM(CASE WHEN activity_calc IN ('winback') THEN 1 ELSE 0 END) winbacks
+FROM stack_job2 sj
+WHERE @prev between start_dt AND lead_date;
+
+
+SET @current_mo = date('2024-05-31')
+SET @prev_mo = date('2024-04-30')
+
+-- merge prev month and current month, then capture ea scenario in a CASE statement
+WITH may AS
+(SELECT CASE 
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%leave%' THEN 'membership_leave'
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%suspend%' THEN 'membership_suspend'
+-- careful w/"activation" bc this will include reactivations
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%activation%' THEN 'membership_activation'
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%deactivate%' THEN 'membership_deactivate'
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%enrollment%' THEN 'membership_enrollment'
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%winback%' THEN 'membership_winback' 
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%cancell%' THEN 'membership_cancel'
+WHEN mem_type = 'carrot' THEN 'trial activity'
+END AS bucket,
+COUNT(mt_email) may_email_cnt
+FROM stack_job2
+WHERE date('2024-05-31') BETWEEN start_dt AND lead_date
+GROUP BY 1 
+ORDER BY 2 DESC),
+april AS
+(SELECT CASE 
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%leave%' THEN 'membership_leave'
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%suspend%' THEN 'membership_suspend'
+-- careful w/"activation" bc this will include reactivations
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%activation%' THEN 'membership_activation'
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%deactivate%' THEN 'membership_deactivate'
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%enrollment%' THEN 'membership_enrollment'
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%winback%' THEN 'membership_winback' 
+WHEN mem_type IN('apple','avocado','household','lettuce','carrot') AND activity_calc LIKE '%cancell%' THEN 'membership_cancel'
+WHEN mem_type = 'carrot' THEN 'trial activity'
+END AS bucket,
+COUNT(mt_email) april_email_cnt
+FROM stack_job2
+WHERE date('2024-04-30') BETWEEN start_dt AND lead_date
+GROUP BY 1 
+ORDER BY 2 DESC)
+SELECT may.bucket, may.may_email_cnt, april.april_email_cnt
+FROM may
+INNER JOIN april
+ON may.bucket = april.bucket;
+
+-- ACCOUNT FLOW VER.II: snapshot approach - the "status" of EACH member at a point in time is compared to the status at a previous/later point in time. Important to handle cases of newly appearing members (weren't in the table the t-1 period)
+-- NOTE I: stack_job2 excludes trial activity, so I'll need to bring that in via joining to another table
+WITH curr AS (
+select mt_email curr_mt_email, mem_type curr_mem_type, activity_calc curr_activity_calc, activity curr_activity 
+from stack_job2 
+WHERE date('2024-05-31') between start_dt AND lead_date
+ORDER BY mt_email),
+prev AS (
+select mt_email prev_mt_email, mem_type prev_mem_type, activity_calc prev_activity_calc, activity prev_activity 
+from stack_job2 
+WHERE date('2024-04-31') between start_dt AND lead_date
+ORDER BY mt_email), 
+trial AS (
+select email trial_email, type_clean trial_type_clean, trial_expiration, latest_trial2 
+from consolidated_mem_type
+WHERE type_clean = JSON_EXTRACT(latest_trial2, '$.type_clean')
+AND type_clean LIKE '%trial%'
+order by email)
+SELECT *
+FROM curr
+LEFT JOIN prev ON curr_mt_email = prev_mt_email
+LEFT JOIN trial ON curr_mt_email = trial_email
+GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12
+ORDER BY curr_mt_email
+limit 1000;
+
+-- relevant account balances
+WITH curr AS (
+select mt_email curr_mt_email, mem_type curr_mem_type, activity_calc curr_activity_calc, activity curr_activity 
+from stack_job2 
+WHERE date('2024-05-31') between start_dt AND lead_date
+ORDER BY mt_email),
+prev AS (
+select mt_email prev_mt_email, mem_type prev_mem_type, activity_calc prev_activity_calc, activity prev_activity 
+from stack_job2 
+WHERE date('2024-04-30') between start_dt AND lead_date
+ORDER BY mt_email),
+final_tbl AS (
+SELECT date('2024-05-31') current_month, curr_activity_calc, prev_activity_calc, count(distinct curr_mt_email) unq_email
+FROM curr
+LEFT JOIN prev ON curr_mt_email = prev_mt_email
+-- WHERE curr_mem_type <> prev_mem_type
+GROUP BY 1,2,3),
+agg_tbl AS (
+SELECT current_month, 
+CASE 
+-- leave
+WHEN curr_activity_calc = 'general leave' AND prev_activity_calc =	'general leave' THEN unq_email
+WHEN curr_activity_calc = 'medical leave' AND prev_activity_calc = 'medical leave' THEN unq_email
+WHEN curr_activity_calc = 'parental leave'	AND prev_activity_calc = 'parental leave' THEN unq_email
+WHEN curr_activity_calc = 'parental leave' AND prev_activity_calc = 'technical activation' THEN unq_email
+WHEN curr_activity_calc = 'general leave' AND prev_activity_calc = 'technical activation' THEN unq_email
+WHEN curr_activity_calc = 'care giving leave' AND prev_activity_calc = 'care giving leave' THEN unq_email
+WHEN curr_activity_calc = 'general leave' AND prev_activity_calc = 'winback' THEN unq_email
+WHEN curr_activity_calc = 'general leave' AND prev_activity_calc =	'initial enrollment' THEN unq_email
+WHEN curr_activity_calc = 'general leave' AND prev_activity_calc =	'technical reactivation' THEN unq_email
+WHEN curr_activity_calc = 'medical leave' AND prev_activity_calc = 'winback' THEN unq_email 
+ELSE NULL 
+END AS leave_balance,
+
+-- active
+CASE WHEN curr_activity_calc = 'initial enrollment' AND prev_activity_calc = 'initial enrollment' THEN unq_email
+WHEN curr_activity_calc = 'technical activation' AND prev_activity_calc = 'technical activation' THEN unq_email
+WHEN curr_activity_calc = 'technical reactivation' AND prev_activity_calc = 'technical reactivation' THEN unq_email 
+WHEN curr_activity_calc = 'initial enrollment' AND prev_activity_calc =	NULL THEN unq_email 
+WHEN curr_activity_calc = 'winback' AND prev_activity_calc = NULL THEN unq_email
+ELSE NULL
+END AS active_balance,
+
+-- winbacks
+CASE WHEN curr_activity_calc = 'winback' AND prev_activity_calc =  'winback' THEN unq_email 
+WHEN curr_activity_calc = 'winback' AND prev_activity_calc = 'cancelled' THEN unq_email
+WHEN curr_activity_calc = 'winback'	AND prev_activity_calc = 'medical leave' THEN unq_email
+WHEN curr_activity_calc = 'winback'	AND prev_activity_calc = 'general leave' THEN unq_email
+WHEN curr_activity_calc = 'technical reactivation' AND prev_activity_calc = 'winback' THEN unq_email
+WHEN curr_activity_calc = 'winback'	AND prev_activity_calc = 'deactivated' THEN unq_email
+WHEN curr_activity_calc = 'winback' AND prev_activity_calc = 'suspended' THEN unq_email
+ELSE NULL
+END AS winback_balance,
+
+-- suspended/cancellation
+CASE WHEN curr_activity_calc = 'cancelled' AND prev_activity_calc = 'technical activation' THEN unq_email
+WHEN curr_activity_calc = 'cancelled' AND prev_activity_calc = 'winback' THEN unq_email
+WHEN curr_activity_calc = 'suspended' AND prev_activity_calc = 'suspended' THEN unq_email
+WHEN curr_activity_calc = 'deactivated'	AND prev_activity_calc = 'initial enrollment' THEN unq_email 
+WHEN curr_activity_calc = 'suspended' AND prev_activity_calc = 'winback' THEN unq_email
+WHEN curr_activity_calc = 'cancelled' AND prev_activity_calc =	'initial enrollment' THEN unq_email
+ELSE NULL
+END AS suspended_balance,
+
+-- re-activation
+CASE WHEN curr_activity_calc = 'technical activation' AND prev_activity_calc = 'parental leave' THEN unq_email 
+WHEN curr_activity_calc = 'technical activation' AND prev_activity_calc = 'general leave' THEN unq_email 
+WHEN curr_activity_calc = 'technical activation' AND prev_activity_calc = 'cancelled' THEN unq_email
+ELSE NULL
+END AS reactivated_balance
+FROM final_tbl) 
+-- TALLY ALL CATEGORIES (leave, active, winbacks)
+SELECT current_month,
+SUM(leave_balance) leave_balance,
+SUM(IFNULL(active_balance,0) + IFNULL(winback_balance,0) + IFNULL(reactivated_balance,0)) active_balance, 
+SUM(suspended_balance) suspended_balance
+FROM agg_tbl 
+GROUP BY 1;
+
+-- ACCOUNT FLOWS PROD TABLE (.IPYNB FILE)
+-- the below code snippet produces the combination of month t and month t-1 "activity calcs" aka the status combinations for a hard-coded pair of months; these counts (unique emails) are ultimately multiplied by the "categorical" matrix that assigns flows to Account Flow categories
+WITH curr AS (
+select mt_email curr_mt_email, mem_type curr_mem_type, activity_calc curr_activity_calc, activity curr_activity 
+from stack_job2 
+WHERE date('2024-05-31') between start_dt AND lead_date 
+ORDER BY mt_email), 
+prev AS (
+select mt_email prev_mt_email, mem_type prev_mem_type, activity_calc prev_activity_calc, activity prev_activity 
+from stack_job2 
+WHERE date('2024-04-30') between start_dt AND lead_date 
+ORDER BY mt_email), 
+final_tbl AS (
+SELECT date('2024-05-31') current_month, curr_activity_calc, prev_activity_calc, count(distinct curr_mt_email) unq_email 
+FROM curr 
+LEFT JOIN prev ON curr_mt_email = prev_mt_email 
+GROUP BY 1,2,3) 
+SELECT * 
+FROM final_tbl;
+
+-- APPROXIMATE A CHURN RATE FOR PSFC LOAN
+WITH curr AS (
+select mt_email curr_mt_email, mem_type curr_mem_type, activity_calc curr_activity_calc, activity curr_activity 
+from stack_job2 
+WHERE date('2024-05-31') between start_dt AND lead_date 
+ORDER BY mt_email), 
+prev AS (
+select mt_email prev_mt_email, mem_type prev_mem_type, activity_calc prev_activity_calc, activity prev_activity 
+from stack_job2 
+WHERE date('2024-04-30') between start_dt AND lead_date 
+ORDER BY mt_email)
+SELECT date('2024-05-31') current_month, *
+FROM curr 
+LEFT JOIN prev ON curr_mt_email = prev_mt_email;
+
+-- INVESTIGATE HOW BEST TO IDENTIFY AND JOIN TRIAL DATA (ORIGINALLY TAKEN FROM 'stored_procedure_trial_shopping.sql')
+WITH prep AS (
+SELECT 
+CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(latest_trial2, '$.start_dt[0]')) = 'null' THEN NULL 
+ELSE CAST(JSON_UNQUOTE(JSON_EXTRACT(latest_trial2, '$.start_dt[0]')) as date) 
+END AS trial_dt, 
+email, type_clean, start_dt, ingest_date, trial_expiration
+from consolidated_mem_type), -- last working code pointed to table mem_type_0101
+-- "conversions" CTE composed only of records where member is no longer in-trial, and where there WAS an originating trial for the email account; ie successful conversions
+conversions AS (
+SELECT  trial_dt, datediff(cast(start_dt as date), prep.trial_dt) as date_difference,
+email, type_clean
+from prep
+where (type_clean not like '%trial%' AND type_clean not like '%bushwick%' AND type_clean not like '%park%')
+-- qualifier where there was a trial on record for the email
+AND trial_dt is not null)
+
+/* trial data wish list:
+i. trial length from that which they converted
+ii. trial history (whether they initiated one prior to their last)
+iii. gaps btwn their trial iterations and/or trial expiration and final signup
+
+proposal table: email, latest trial metadata, # of total trials, count of trial by trial length, conversion date, date diff btwn last two trials, date diff btwn last trial and conversion date
+*/
+CREATE TABLE trial_meta_all AS
+WITH all_trials AS (SELECT *
+FROM consolidated_mem_type
+WHERE type LIKE '%trial%'
+ORDER BY email, start_dt), 
+-- get counts by trial rounds
+counts AS (
+SELECT email, type_clean, count(*) trial_len_cnt_email, max(start_dt) AS last_trial_start
+FROM all_trials 
+GROUP BY 1,2),
+-- one row per email and trial type (requires a self-JOIN)
+six_month AS (
+SELECT email, type_clean, trial_len_cnt_email six_mo_cnt, last_trial_start
+FROM counts
+WHERE type_clean = '6 mo trial'),
+two_month AS (
+SELECT email, type_clean, trial_len_cnt_email two_mo_cnt, last_trial_start
+FROM counts
+WHERE type_clean = '2 mo trial'),
+final_tbl AS (
+-- mysql doesn't offer OUTER joins, so have to build this janky one
+SELECT six_month.email, 
+CASE WHEN six_mo_cnt IS NULL THEN 0 ELSE six_mo_cnt END AS six_mo_cnt, 
+CASE WHEN two_mo_cnt IS NULL THEN 0 ELSE two_mo_cnt END AS two_mo_cnt, six_month.last_trial_start last_trial_start_6, two_month.last_trial_start last_trial_start_2, ABS(DATEDIFF(six_month.last_trial_start, two_month.last_trial_start)) date_diff
+FROM six_month
+LEFT JOIN two_month ON six_month.email = two_month.email
+UNION ALL
+SELECT two_month.email, 
+CASE WHEN six_mo_cnt IS NULL THEN 0 ELSE six_mo_cnt END AS six_mo_cnt, 
+CASE WHEN two_mo_cnt IS NULL THEN 0 ELSE two_mo_cnt END AS two_mo_cnt, six_month.last_trial_start last_trial_start_6, two_month.last_trial_start last_trial_start_2, ABS(DATEDIFF(six_month.last_trial_start, two_month.last_trial_start)) date_diff
+FROM six_month
+RIGHT JOIN two_month ON six_month.email = two_month.email
+GROUP BY 1,2,3,4,5 
+ORDER BY six_mo_cnt ASC)
+SELECT *, 
+-- build latest trial type field
+CASE 
+WHEN last_trial_start_6 > last_trial_start_2 THEN '6 month'
+WHEN last_trial_start_2 > last_trial_start_6 THEN '2 month'
+WHEN last_trial_start_2 IS NULL AND last_trial_start_6 IS NOT NULL THEN '6 month' 
+WHEN last_trial_start_6 IS NULL AND last_trial_start_2 IS NOT NULL THEN '2 month'
+END AS last_trial_type,
+-- record the last trial start date
+CASE 
+WHEN last_trial_start_6 > last_trial_start_2 THEN DATE_ADD(last_trial_start_6, INTERVAL 6 MONTH)
+WHEN last_trial_start_2 > last_trial_start_6 THEN DATE_ADD(last_trial_start_2, INTERVAL 2 MONTH)
+WHEN last_trial_start_2 IS NULL AND last_trial_start_6 IS NOT NULL THEN DATE_ADD(last_trial_start_6, INTERVAL 6 MONTH) 
+WHEN last_trial_start_6 IS NULL AND last_trial_start_2 IS NOT NULL THEN DATE_ADD(last_trial_start_2, INTERVAL 2 MONTH)
+END AS last_expiration_date
+FROM final_tbl;
+
+-- can I create a JSON object that stores the freq count by trial type?
+
+-- prod table: current_month, leave_balance, active_balance, suspended_balance
+INSERT INTO acct_flows (current_month, leave_balance, active_balance, suspended_balance)
+VALUES (value1, value2, value3, ...); 
+
 
 -- weekly snapshot; calendar table
 -- this requires adjusting the system variable: https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_cte_max_recursion_depth; https://www.percona.com/blog/introduction-to-mysql-8-0-recursive-common-table-expression-part-2/
@@ -830,54 +1152,55 @@ AND tsh_m.final_trial_flag = 'relevant trial'
 group by 1 
 order by 1 asc;
 
--- potentially missed opportunities? former trial members that did not convert but either shopped a lot during their trial or have shopped since their trial expired (but they never converted)
 
-/************* Find all member activity, including full membership journey, including those having a historical trial start
-TODO: trial expirations don't populate properly here
-**************/
-DROP TABLE IF EXISTS mem_journey;
-CREATE TABLE mem_journey AS
-WITH mt_ms AS (
-SELECT mt.email mt_email, mt.start_dt mt_start_dt, mt.lead_date mt_lead_date, mt.type_clean mt_type_clean, mt.type_raw mt_type_raw, ms.start_dt ms_start_dt, ms.lead_date ms_lead_date, ms.type_clean ms_type_clean, ms.type_raw ms_type_raw  
-from mem_type_0927 mt
-LEFT JOIN mem_status_0927 ms ON mt.email = ms.email
--- ensure that status records only populate on same line as the relevant type record
-AND ms.start_dt between mt.start_dt AND mt.lead_date 
-AND ms.type_clean not like '%trial%'
-WHERE mt.type_clean IN ('lettuce', 'carrot', 'household', 'avocado','apple')), 
--- stack the data: to ensure that the initial membership (trial or other) is allocated its own row, this way I can edit the in-force date range, as this will be impacted by the first record on mem_status
--- grouping here will remove the dupes, and can be used in place of a WHERE clause to ensure single selection
--- stacking: select the mem_type portion of each row and stack on top of the mem_status portion of each row; grouping here is essential for the mem_type portion, in order to drop duplicates
-stacked AS (
-SELECT mt_email, mt_start_dt start_dt, mt_lead_date lead_date, mt_type_clean, mt_type_clean type_clean, mt_type_raw type_raw
-FROM mt_ms
--- WHERE mt_type_clean IN ('lettuce', 'carrot', 'household', 'avocado','apple')
--- where (type_clean not like '%trial%' AND type_clean not like '%bushwick%' AND type_clean not like '%park%')
-GROUP BY 1,2,3,4,5,6	
-UNION ALL
-SELECT mt_email, ms_start_dt start_dt, ms_lead_date lead_date, mt_type_clean, ms_type_clean type_clean, ms_type_raw type_raw
-FROM mt_ms
--- ms_type_clean values related to trial activity are '%trial%', 'cancelled', 'deactivated'
--- WHERE ms_type_clean not like '%trial%')
-GROUP BY 1,2,3,4,5,6), 
-lead_step AS (
-select stacked.*, LEAD(start_dt) OVER(PARTITION BY mt_email order by start_dt asc) lead_dt_2
-from stacked 
-WHERE type_clean IS NOT NULL) -- rows where the member-owner never had a status change
-SELECT lead_step.*, CASE WHEN lead_dt_2 is not null THEN date_sub(lead_dt_2, interval 1 day) ELSE lead_date END AS end_dt
-FROM lead_step 
-order by 1,2 asc;
+/******** TRIAL JOURNEYS, SUCCESSFUL TRIAL JOURNEYS, TRIAL MEMBER TENDENCIES, ETC***********
+- source table: consolidated_mem_type 
+field 'type_clean': values "6 mo trial" and "trial"
+field 'latest_trial2': comes from the 'append_last_trial' function of civiActivityReport.ipynb; this is a convenience field... field records the latest trial a/o start date, this json field contains keys trial start date and trial type
+- source table: consolidated_mem_status
 
--- check the unique values of type_clean
-SELECT type_clean 
-from mem_journey
-group by 1;
-
-/*
-GROUPINGS
-active: lettuce, carrot, apple, winback, household, technical reactivation, avocado, technical re-activation, technical	activation
-deactivated: cancelled, deactivated, general leave, parental leave, medical	leave
+investigate cases:
+i. multiple trials
+ii. a 2-month trial converting to a 6 mo
 */
+
+-- QUERY FOR SANKEY DIAGRAM OF TRIAL JOURNEY where each branch of the diagram is a mem_type step
+-- ea "step"/round returns pieces of metadata of the mem_type round
+-- result set expectation: leftmost columnset
+-- first step after the trial is return ea distinct mem_type along with the start_dt, then return ea pair of mem_type and mem_status along w/mem_status start_dt; this will eventually allow me to understand the typical journey, tenure and success/failure outcomes
+-- first select for members that ever underwent a trial
+WITH trial_email AS (
+SELECT email 
+from consolidated_mem_type mt	
+WHERE 1=1
+AND lower(type_clean) like '%trial%'
+group by 1),
+-- select ALL activity for members that every registered a trial
+grouping2 AS (
+SELECT mt.email mt_email, mt.start_dt mt_start_dt, mt.type_clean mt_type_clean
+from consolidated_mem_type mt 
+WHERE mt.email IN (SELECT email from trial_email)
+group by 1,2,3
+order by 1,3 asc), 
+-- assign a row_num to ea mem_type in order to identify first, second, thirs, etc rounds of
+iteration AS (
+SELECT *, row_number() over(PARTITION BY mt_email order by mt_start_dt asc) row_num
+FROM grouping2),
+-- in order to join ea iteration, build a join with hard-coded round numbers going 4-deep at first
+consolidate AS (
+SELECT * FROM 
+(SELECT * from iteration where row_num = 1) row_one
+LEFT JOIN (SELECT mt_email mt_email2, mt_start_dt mt_start_dt2, mt_type_clean mt_type_clean2 from iteration where row_num = 2) row_two
+ON row_one.mt_email = row_two.mt_email2
+LEFT JOIN (SELECT mt_email mt_email3, mt_start_dt mt_start_dt3, mt_type_clean mt_type_clean3 from iteration where row_num = 3) row_three 
+ON row_one.mt_email = row_three.mt_email3) 
+-- aggregate by journey; this will reveal some non-sequitors, but those are in minority
+select mt_type_clean, mt_type_clean2, mt_type_clean3, count(*)
+from consolidate 
+group by 1,2,3 
+order by 1,2,4 desc;
+
+/******** END TRIAL JOURNEYS ***********/
 
 /*Number of members on Leave, # of winbacks, time-to-winback */
 SELECT calendar_date, SUM(CASE WHEN activity_calc IN ('winback','initial enrollment','technical activation','technical reactivation','technical re-activation') THEN 1 ELSE 0 END) AS active_cnts, SUM(CASE WHEN activity_calc IN ('deactivated','parental leave','medical leave','care giving leave') THEN 1 ELSE 0 END) AS inactivte_cnts, SUM(CASE WHEN activity_calc IN ('winback','technical activation','technical re-activation') THEN 1 ELSE 0 END) AS winbacks

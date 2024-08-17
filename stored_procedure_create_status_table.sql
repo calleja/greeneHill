@@ -1,6 +1,6 @@
 /*
 Stored procedure accomplishes the following:
-1) copy contents of current prod table "consolidated_mem_status" into a temp table and remove all records that appear in the new import (as of "start_dt" field)
+1) copy contents of current prod table "consolidated_mem_status" into a temp table and remove all records that appear in the new import (as of "start_dt" field) <- FAILURE: if a 'lead_date' of a legacy import is after a new import, there is no adjustment and one:many records can exist for an email as of a particular date and inflate AccountFlow and Active Account records
 2) insert all contents of new import table ("type") into the temp table
 3) check for and remove duplicates (requires making a second TEMP table)
 
@@ -37,8 +37,9 @@ GROUP BY 1,2,3,4,5,6,7;
 
 
 -- STEP 4 - DELETE DUPES: requires making ANOTHER temp table; this NEW table ("consolidated_mem_status_temp2") is the new de-duped membership table, and is the PROD version going forward
--- TODO: re-write the lead_date field in order to refresh it by "bringing it forward" to the report date of the newest data import. Rationale: lead_date is designated at report run date in the .ipynb file, but this has to be brough forward each time. Only the final record of each member's activity should be brought forward; the earlier ones should be preserved. After the records are accurately brought forward is it appropriate to run the de-dupe script; NOTE: this procedure must also be copied to the "status" stored procedure
--- STEP 4a: projecta row number onto ea record of ea member's activity
+-- TODO: re-write the lead_date field in order to refresh it by "bringing it forward" to the report date of the newest data import. Rationale: lead_date is designated at report run date in the .ipynb file, but this has to be brought forward each time. Only the final record of each member's activity should be brought forward; the earlier ones should be preserved. After the records are accurately brought forward is it appropriate to run the de-dupe script; NOTE: this procedure must also be copied to the "status" stored procedure
+-- *** PROPOSAL *** - re-calc the lead_dt AFTER new records are consolidated with old records, which requires ignoring or overwriting all lead_dt records
+-- STEP 4a: project a row number onto ea record of ea member's activity
 -- variable used for UPDATING the lead_date
 -- STEP 4b: records where row_num = max row number for the group are candidates for an UPDATE
 SET @max_lead_date = (SELECT max(ingest_date) FROM membership.mem_status_new_import);

@@ -6,8 +6,16 @@
 -- trialShoppingHabits = transactional table of trial member shopping activity (exclusively): one record per shopping trip that classifies it as in/pre/out of trial, whether a conversion occurred, total trips while in-trial
 -- if this version doesn't work, consult trialShoppingHabitsDiagnostics.sql for extensive QA
 */
-DROP TABLE IF EXISTS trialShoppingHabits2;
+DROP PROCEDURE IF EXISTS trial_targets;
 
+DELIMITER //
+        
+CREATE PROCEDURE trial_targets()
+
+BEGIN 
+
+DROP TABLE IF EXISTS trialShoppingHabits2;
+DROP TABLE IF EXISTS trial_tgts;
 /* 
 DECLARE min_dt DATE;
 DECLARE max_dt DATE;
@@ -27,25 +35,30 @@ mo_type: membership type, which will only be non-null if they converted
 trips: aggregation (count of trips) by all the fields above
 */
 CREATE TABLE trialShoppingHabits2 AS
--- prep appends a trial_dt field referencing the existing(?); membership start dates filtered at the "stats" CTE step
+-- prep appends a trial_dt field referencing the existing(?); membership start dates filtered at the "stats" CTE step; ALL member records are propogated in prep (ie no filtering for presence of trial)
+-- type_clean will have the 6 and 2 mo variant
 WITH prep AS (
 SELECT 
 CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(latest_trial2, '$.start_dt[0]')) = 'null' THEN NULL 
 ELSE CAST(JSON_UNQUOTE(JSON_EXTRACT(latest_trial2, '$.start_dt[0]')) as date) 
 END AS trial_dt, 
 email, type_clean, start_dt, ingest_date, trial_expiration
-from consolidated_mem_type_temp2), -- last working code pointed to table mem_type_0101
--- conversions CTE composed of only non-trial records where there WAS an originating trial for the email account; ie successful conversions
+from consolidated_mem_type), -- last working code pointed to table mem_type_0101
+-- "conversions" CTE composed only of records where member is no longer in-trial, and where there WAS an originating trial for the email account; ie successful conversions
 conversions AS (
 SELECT  trial_dt, datediff(cast(start_dt as date), prep.trial_dt) as date_difference,
 email, type_clean
 from prep
 where (type_clean not like '%trial%' AND type_clean not like '%bushwick%' AND type_clean not like '%park%')
+-- qualifier where there was a trial on record for the email
 AND trial_dt is not null), 
--- stats CTE is aggregation of trips/shopping visits by: email, trial_start_dt, trial_expiration, ingest_date
--- stats will only keep trial-related acitivty; 'conversions_trial_dt' field will denote whether the trial member converted
+-- "stats" ONLY contains members on trial at time of shopping activity (where prep.type_clean = "trial")
+-- "stats" CTE is aggregation of trips/shopping visits by: email, trial_start_dt, trial_expiration, ingest_date
+-- "stats" will only keep trial-related activity; 'conversions_trial_dt' field will denote whether the trial member converted
+-- track the latest trial via "final_trial_flag" = 'relevant trial'
+-- for each trial record (regardless if latest), categorize shopping visits as either pre or post trial, and count no. of visits
 stats AS (
-SELECT cast(mt.start_dt as date) AS trial_start_dt, mt.email, cast(trial_expiration as date) trial_expiration, mt.ingest_date, 
+SELECT cast(mt.start_dt as date) AS trial_start_dt, mt.email, cast(trial_expiration as date) trial_expiration, mt.ingest_date, mt.type_clean orig_type_clean,
 -- sl.Activity_Date shopping_date, -- (have to exclude or I don't get proper aggregation below)
 CASE 
 WHEN sl.Activity_Date BETWEEN mt.start_dt AND mt.trial_expiration THEN 'in trial' 
@@ -58,19 +71,18 @@ CASE
 WHEN mt.trial_dt = cast(mt.start_dt as date) THEN 'relevant trial' 
 ELSE 'trial iteration expected' -- apriori evidence of an upcoming subsequent trial
 END AS final_trial_flag,
--- propogate the membership type, should they convert (derived from 'conversions' table)
-max(conversions.type_clean) mo_type, 
+-- propogate the membership type, should they convert (derived from 'conversions' table); for QA/conditional purposes later (assume that if a non-NULL is present, that will be returned)
 -- attempt to propogate each user's record (in resultset) with the last member type to denote conversion
--- max(conversions.type_clean) converted_type <- reinserting above
+max(conversions.type_clean) mo_type, 
 count(distinct sl.Activity_Date) trips
-from prep mt
+from prep mt -- prep = entire universe of membership
 LEFT JOIN shop_log sl ON trim(mt.email) = trim(sl.Target_Email)
 LEFT JOIN conversions ON trim(mt.email) = trim(conversions.email) AND cast(mt.start_dt as date) = conversions.trial_dt
 WHERE 1=1
 AND mt.start_dt BETWEEN @min_dt AND @max_dt
 AND mt.trial_expiration is not null
 AND mt.type_clean like '%trial%'
-GROUP BY 1,2,3,4,5,6)
+GROUP BY 1,2,3,4,5,6,7)
 select * 
 from stats 
 order by email;
@@ -79,9 +91,10 @@ order by email;
 -- surface the actual trial members likely to convert: trial members that have shopped since trial has begun and still in-trial
 -- partition/craft cohorts from trial start week
 -- member_directory is a table located in the db that is imported via its own pipeline: 'ingestMembershipContactInfo.ipynb'
--- ideally this is moved to a python script where I can simulataneously write output to csv
+
+CREATE TABLE trial_tgts AS
 WITH trips_data AS (
-SELECT STR_TO_DATE(CONCAT(yearweek(tsh.trial_start_dt),' Sunday'), '%X%V %W') FirstDayOfWeek, tsh.email, tsh.trips, tsh.trial_expiration, (SELECT avg(tsh_m.trips) ave
+SELECT STR_TO_DATE(CONCAT(yearweek(tsh.trial_start_dt),' Sunday'), '%X%V %W') FirstDayOfWeek, tsh.email, tsh.trips, tsh.trial_expiration, tsh.orig_type_clean, (SELECT avg(tsh_m.trips) ave
 from trialShoppingHabits2 tsh_m
 WHERE tsh_m.relative_trial_period IN ('in trial','n/a')
 AND tsh_m.final_trial_flag = 'relevant trial'
@@ -101,7 +114,12 @@ order by FirstDayOfWeek asc;
 
 --  QA: in order to QA the trial member's journey and ensure that they did not convert, review their history in consolidated_mem_type_temp2
 -- 'names' is a CTE crafted from the last query above
+/*
 select mt.*
-from consolidated_mem_type_temp2 mt
+from consolidated_mem_type mt
 INNER JOIN names ON mt.email=names.email 
 order by email, start_dt asc;
+*/
+
+END //
+DELIMITER ;

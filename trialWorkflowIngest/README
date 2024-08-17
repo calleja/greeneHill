@@ -1,8 +1,17 @@
 program to run two data imports into the membership DB that serve as inputs to the "trial conversion" workflow.
-sql Tables:
-1) shop_log table (originally importe via ingestMemberShopping.ipynb)
+sql Tables injection:
+1) shop_log table (originally imported via ingestMemberShopping.ipynb)
 2) member_directory (originally imported via ingestMembershipContactInfo.ipynb)
+The .ipynb files are translated into .py files in this module
 
-Purpose: this module will be called by an 'orchestration' .ipynb file along w/an sql script (trial_shopping.sql) that will ultimately deliver the target trial members
+New purpose: part of the trial member targetting process where CIVI reports are imported (via this module)
+
+Original, but since revised purpose: this package will be called by the /membershipReportsCIVI/github/greeneHill/orchestration.ipynb file along w/an sql script (trial_shopping.sql) that will ultimately deliver the target trial members
 
 Much of what I learned about building python projects and packaging them as modules came from https://realpython.com/python-modules-packages/ 
+
+A module is is a warehouse for classes and user-defined functions, but doesn't execute anything on its own; if it did, that would make it a script. Conforming to that definition, the ingestMemberContacts.py and ingestTrialShoppingHabits.py (pending) would still require a run command outside of the .py file. 
+
+**Scripts can import from modules, to access and call its classes and functions.
+
+Packages, like this one, contain __init__.py files, and contain within them one or more related modules.

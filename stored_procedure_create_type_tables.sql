@@ -36,10 +36,11 @@ from membership.mem_type_new_import
 GROUP BY 1,2,3,4,5,6,7,8,9;
 
 -- STEP 4 - DELETE DUPES: requires making ANOTHER temp table; this NEW table ("consolidated_mem_type_temp2") is the new de-duped membership table, and is the PROD version going forward
--- TODO: re-write the lead_date field in order to refresh it by "bringing it forward" to the report date of the newest data import. Rationale: lead_date is designated at report run date in the .ipynb file, but this has to be brough forward each time. Only the final record of each member's activity should be brought forward; the earlier ones should be preserved. After the records are accurately brought forward is it appropriate to run the de-dupe script; NOTE: this procedure must also be copied to the "status" stored procedure
--- STEP 4a: projecta row number onto ea record of ea member's activity
--- variable used for UPDATING the lead_date
--- STEP 4b: records where row_num = max row number for the group are candidates for an UPDATE
+-- first segment of the logic overwrites the lead_date field in order to refresh it by "bringing it forward" to the "report date"/ingest_date of the newest data import. Rationale: lead_date is designated at report run date in the .ipynb file, but this has to be brought forward each time the script is run. Only the final record of each member's activity should be brought forward; the earlier (lead_date) ones should be preserved. After the records are accurately brought forward it's appropriate to run the de-dupe script; 
+-- TODO: this procedure must also be copied to the "status" stored procedure
+-- STEP 4a (date-forwarding segment): project a row number onto ea record of ea member's activity
+-- i. declare a variable used for UPDATING the lead_date
+-- ii. records where row_num = max row number for the group are candidates for an UPDATE
 SET @max_lead_date = (SELECT max(ingest_date) FROM membership.mem_type_new_import);
 
 WITH row_ver AS (
@@ -48,7 +49,7 @@ COUNT(start_dt) OVER(PARTITION BY email) total_rows
 from consolidated_mem_type_temp),
 new_one AS 
 (SELECT *, 
--- create 'new_date' field that I will use to replace the lead_date for the "last" record for ea email
+-- ** DATE EXTENSION LOGIC**: create 'new_date' field that I will use to replace the lead_date for the "last" record for ea email
 CASE 
 WHEN row_num = total_rows THEN @max_lead_date 
 ELSE lead_date END AS new_date
@@ -61,8 +62,10 @@ SET x.lead_date = new_one.new_date;
 DROP TABLE IF EXISTS consolidated_mem_type_temp2;
 CREATE TABLE consolidated_mem_type_temp2 LIKE consolidated_mem_type_temp;
 
+-- STEP 4b
 -- de-dupe method: assign row numbers via window function and select for the latest import by way of "ingest_date"
 -- expect that # of rows of consolidated_mem_type_temp2 =< consolidated_mem_type_temp
+-- consolidated_mem_type_temp2 is renamed to consolidated_mem_type in the orchestration.ipynb procedure
 INSERT INTO consolidated_mem_type_temp2
 WITH row_num_table AS (
 SELECT c_temp.*, row_number() OVER(PARTITION BY type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, trial_expiration, latest_trial2 order by ingest_date desc) row_num

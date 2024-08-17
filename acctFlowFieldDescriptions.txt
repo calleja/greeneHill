@@ -1,0 +1,7 @@
+Field - description
+New Cancel/Suspended - this total draws/impacts BOTH Active and Winback balances, so m-o-m differences in those balances should be SUMMED then netted against this field
+New Leave - similar relationship to the Active and Winback balances as New Cancel/Suspended whereby the difference in those balances m-o-m should be netted against this ONE field
+
+Leave balances will fluctuate and not expected to be catpured well by the status change fields (ie New Cancel/Suspended, Trial Conversion, New Signup, etc)
+
+

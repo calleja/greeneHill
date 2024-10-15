@@ -18,17 +18,18 @@ CREATE PROCEDURE type_table_create()
 BEGIN
 -- STEP 1
 DROP TABLE IF EXISTS consolidated_mem_type_temp; -- if exists
--- consolidated_mem_type is the legacy prod table
+-- consolidated_mem_type is the legacy prod table. It follows the same schema as mem_type_MMDD
 CREATE TABLE consolidated_mem_type_temp LIKE consolidated_mem_type; -- table consolidated_mem_type_temp will need to be deleted
 INSERT INTO consolidated_mem_type_temp SELECT * FROM consolidated_mem_type;
 
 -- STEP 2: DELETE RECORDS MEETING CRITERIA FROM TEMPORARY TABLE VERSION
 -- replace w/most recent report download
+-- mem_type_new_import was created in orchestration.ipynb and is an exact copy of the latest import file ex. 'mem_type_0722'
 SET @initial_dt = (SELECT min(start_dt) FROM membership.mem_type_new_import);
-DELETE FROM consolidated_mem_type_temp WHERE start_dt > @initial_dt;
+DELETE FROM consolidated_mem_type_temp WHERE start_dt >= @initial_dt;
 
 -- STEP 3: insert new records into first temp table
--- make sure to account for 'ingest_date' field
+-- make sure to account for 'ingest_date' field bc it could be duplicated in certain circumstances
 INSERT INTO consolidated_mem_type_temp
 select type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, trial_expiration, latest_trial2, max(ingest_date) ingest_date
 -- new table of data
@@ -44,13 +45,15 @@ GROUP BY 1,2,3,4,5,6,7,8,9;
 SET @max_lead_date = (SELECT max(ingest_date) FROM membership.mem_type_new_import);
 
 WITH row_ver AS (
-select *, ROW_NUMBER() OVER(PARTITION BY email ORDER BY lead_date asc) row_num, 
+-- changed the ORDER BY clause to start_date from lead_date because start_date is more reliable
+select *, ROW_NUMBER() OVER(PARTITION BY email ORDER BY start_date asc) row_num, 
 COUNT(start_dt) OVER(PARTITION BY email) total_rows
 from consolidated_mem_type_temp),
 new_one AS 
 (SELECT *, 
 -- ** DATE EXTENSION LOGIC**: create 'new_date' field that I will use to replace the lead_date for the "last" record for ea email
 CASE 
+-- max_lead_date is a table-wide variable NOT an email-specific variable, which should be OK
 WHEN row_num = total_rows THEN @max_lead_date 
 ELSE lead_date END AS new_date
 FROM row_ver)
@@ -63,19 +66,46 @@ DROP TABLE IF EXISTS consolidated_mem_type_temp2;
 CREATE TABLE consolidated_mem_type_temp2 LIKE consolidated_mem_type_temp;
 
 -- STEP 4b
--- de-dupe method: assign row numbers via window function and select for the latest import by way of "ingest_date"
+-- de-dupe method: for each unique set of values for a subset of rows, we select the LATEST entry (by way of "ingest_date") 
+-- field names (10) of consolidated_mem_type: type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, trial_expiration, latest_trial2, ingest_date
+-- QA: ensure that the number of unique rows (as measured by the proper subset) equals the number of rows by email
 -- expect that # of rows of consolidated_mem_type_temp2 =< consolidated_mem_type_temp
 -- consolidated_mem_type_temp2 is renamed to consolidated_mem_type in the orchestration.ipynb procedure
+
+-- HOT FIX: a new de-dupe method that selects for the max ingest_date on combinations of email, type, type_raw, start_dt, type_clean, trial_expiration, latest_trial2
 INSERT INTO consolidated_mem_type_temp2
 WITH row_num_table AS (
-SELECT c_temp.*, row_number() OVER(PARTITION BY type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, trial_expiration, latest_trial2 order by ingest_date desc) row_num
+SELECT c_temp.*, 
+-- left out of PARTITION BY clause: 'lead_date' and 'ingest_date'
+-- the value of the row_num is that I can reference it later when I attempt to preserve the latest lead_date (all others should be overwritten in the 'stored_procedure_create_tables_stack_job.sql)
+row_number() OVER(PARTITION BY type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration, latest_trial2 order by ingest_date desc) row_num
+FROM consolidated_mem_type c_temp)
+-- select for row with the latest
+SELECT *
+FROM row_num_table 
+WHERE ingest_date = 
+(SELECT max(ingest_date) 
+from consolidated_mem_type inner_c 
+WHERE row_num_table.email = inner_c.email 
+AND row_num_table.type = inner_c.type 
+AND row_num_table.type_raw = inner_c.type_raw 
+AND row_num_table.start_dt = inner_c.start_dt 
+AND row_num_table.type_clean = inner_c.type_clean
+AND row_num_table.trial_expiration = inner_c.trial_expiration
+AND row_num_table.latest_trial2 = inner_c.latest_trial2)
+
+-- QA options: table length of 2nd temp table should be > records of pre-existing prod table and have a 'start_dt' range spanning beginning of legacy prod to end of latest table ingest
+
+-- LEGACY CODE TO BE DEPRECATED
+INSERT INTO consolidated_mem_type_temp2
+WITH row_num_table AS (
+SELECT c_temp.*, 
+-- left out of PARTITION BY clause: 'lead_date' and 'ingest_date'
+row_number() OVER(PARTITION BY type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration, latest_trial2 order by ingest_date desc) row_num
 FROM consolidated_mem_type_temp c_temp)
 SELECT type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, trial_expiration, latest_trial2, ingest_date
 FROM row_num_table 
 WHERE row_num = 1;
-
--- QA options: table length of 2nd temp table should be > records of pre-existing prod table and have a 'start_dt' range spanning beginning of legacy prod to end of latest table ingest
--- these can be done in python
 
 END //
 DELIMITER ;

@@ -1,15 +1,15 @@
 -- this script creates table stack_job2 from scratch (no deleting and infilling based on earliest start_dt like the stored procedures for the "consolidated" tables)
 -- stack job provides events of a member journey in long format; Original intent of this table was to track active member population (an interaction of mem status and mem type), including those suspended, on leave, etc. 
--- trial related information is excluded from both feeder tables: mem_type and mem_status (in the case of the latter, events such as "trial conversion" & "trial expiration" are left off, which is OK because activity is only considered AFTER a member joins/converts)
+-- trial related information is excluded from the feeder tables (although it appears in the feeder tables, it's filtered when creating stack_job2 (events such as "trial conversion" & "trial expiration" are left off, which is OK because activity is only considered AFTER a member joins/converts)
 /* **************  Field Key
 - mt_cancel_flag = set to 'Y' when 'type_raw' contains the word "cancelled"; necessary bc a cancelled event was never recorded on the 'status' table
-
+- NOTE: consolidated tables (consolidated_mem_type & consolidated_mem_status) may contain duplicates when evaluated on a certain subset of fields (and not others)
 
 */
 -- join mem_status to mem_type, which is the only way to associate prevailing membership type (mem_typeXXX.type_clean) to mem_status activity; then stack so that each row is a membership event period for ea email (records having null values for mt_type_clean are mem_type original records; it's mem_status that will have non-null values)
 -- UPDATING STATEMENT to replace the "lead_date" for "TYPE" rows
 -- the lead and start_dt fields are exclusive to either type or status changes, this is bc I related all status changes to the prevailing type and I need the type range in order to accomplish that; this means I HAVE TO recompute the lead/start date post compilation
-
+ 
 DROP PROCEDURE IF EXISTS stackjob_creations;
 
 DELIMITER //
@@ -37,7 +37,7 @@ order by mt.email, mt.start_dt asc, ms.start_dt asc),
 /* 
 stack the data: re-arrange the joined data from mt_ms 
 similar columns (by record significance, not necessarily name) from the LHS and RHS of the mt_ms join are stacked
-*type_clean* records from mem_status table record status change events
+*type_clean* records from mem_status table record 'status change' events
 *type_clean* records from mem_type table record new types of membership (including trial)
 mt_type_clean = null signals records from original mt_type (part of the UNION)
 -- excludes trial activity and only returns activity related to full member-owners

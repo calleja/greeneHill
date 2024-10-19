@@ -46,7 +46,7 @@ SET @max_lead_date = (SELECT max(ingest_date) FROM membership.mem_type_new_impor
 
 WITH row_ver AS (
 -- changed the ORDER BY clause to start_date from lead_date because start_date is more reliable
-select *, ROW_NUMBER() OVER(PARTITION BY email ORDER BY start_date asc) row_num, 
+select *, ROW_NUMBER() OVER(PARTITION BY email ORDER BY start_dt asc) row_num, 
 COUNT(start_dt) OVER(PARTITION BY email) total_rows
 from consolidated_mem_type_temp),
 new_one AS 
@@ -92,11 +92,12 @@ AND row_num_table.type_raw = inner_c.type_raw
 AND row_num_table.start_dt = inner_c.start_dt 
 AND row_num_table.type_clean = inner_c.type_clean
 AND row_num_table.trial_expiration = inner_c.trial_expiration
-AND row_num_table.latest_trial2 = inner_c.latest_trial2)
+AND row_num_table.latest_trial2 = inner_c.latest_trial2);
 
 -- QA options: table length of 2nd temp table should be > records of pre-existing prod table and have a 'start_dt' range spanning beginning of legacy prod to end of latest table ingest
 
 -- LEGACY CODE TO BE DEPRECATED
+/*
 INSERT INTO consolidated_mem_type_temp2
 WITH row_num_table AS (
 SELECT c_temp.*, 
@@ -106,6 +107,6 @@ FROM consolidated_mem_type_temp c_temp)
 SELECT type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, trial_expiration, latest_trial2, ingest_date
 FROM row_num_table 
 WHERE row_num = 1;
-
+*/
 END //
 DELIMITER ;

@@ -59,6 +59,29 @@ UPDATE consolidated_mem_status_temp x
 INNER JOIN new_one ON x.email = new_one.email AND x.lead_date = new_one.lead_date 
 SET x.lead_date = new_one.new_date;
 
+-- new logic introduced/tested first on 'stored_procedure_create_type_tables.sql'
+DROP TABLE IF EXISTS consolidated_mem_status_temp2;
+CREATE TABLE consolidated_mem_status_temp2 AS
+WITH row_num_table AS (
+-- SELECT c_temp.*,
+SELECT type, type_raw, start_dt, datetimerange, type_clean, email, ingest_date, 
+-- left out of PARTITION BY clause: 'lead_date' and 'ingest_date'
+-- the value of the row_num is that I can reference it later when I attempt to preserve the latest lead_date (all others should be overwritten in the 'stored_procedure_create_tables_stack_job.sql)
+row_number() OVER(PARTITION BY type, type_raw, start_dt, datetimerange, type_clean, email order by ingest_date desc) row_num
+FROM consolidated_mem_status_temp c_temp)
+-- select for row with the latest
+SELECT *
+FROM row_num_table 
+WHERE ingest_date = 
+(SELECT max(ingest_date) 
+from consolidated_mem_status_temp inner_c 
+WHERE inner_c.email = row_num_table.email
+AND inner_c.type = row_num_table.type  
+AND inner_c.type_raw = row_num_table.type_raw
+AND inner_c.start_dt = row_num_table.start_dt
+AND inner_c.type_clean = row_num_table.type_clean);
+
+/* legacy de-dupe code:
 DROP TABLE IF EXISTS consolidated_mem_status_temp2;
 CREATE TABLE consolidated_mem_status_temp2 LIKE consolidated_mem_status_temp;
 
@@ -70,6 +93,7 @@ FROM consolidated_mem_status_temp c_temp)
 SELECT type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, ingest_date
 FROM row_num_table 
 WHERE row_num = 1;
+*/
 
 END //
 DELIMITER ;

@@ -62,37 +62,36 @@ INNER JOIN new_one ON x.email = new_one.email AND x.lead_date = new_one.lead_dat
 SET x.lead_date = new_one.new_date;
 
 -- run the de-dupe process on the newly updated 'consolidated_mem_type_temp' table
-DROP TABLE IF EXISTS consolidated_mem_type_temp2;
-CREATE TABLE consolidated_mem_type_temp2 LIKE consolidated_mem_type_temp;
-
 -- STEP 4b
 -- de-dupe method: for each unique set of values for a subset of rows, we select the LATEST entry (by way of "ingest_date") 
 -- field names (10) of consolidated_mem_type: type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, trial_expiration, latest_trial2, ingest_date
 -- QA: ensure that the number of unique rows (as measured by the proper subset) equals the number of rows by email
 -- expect that # of rows of consolidated_mem_type_temp2 =< consolidated_mem_type_temp
 -- consolidated_mem_type_temp2 is renamed to consolidated_mem_type in the orchestration.ipynb procedure
-
 -- HOT FIX: a new de-dupe method that selects for the max ingest_date on combinations of email, type, type_raw, start_dt, type_clean, trial_expiration, latest_trial2
-INSERT INTO consolidated_mem_type_temp2
+DROP TABLE IF EXISTS consolidated_mem_type_temp2;
+CREATE TABLE consolidated_mem_type_temp2 AS
 WITH row_num_table AS (
-SELECT c_temp.*, 
+-- SELECT c_temp.*,
+SELECT type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration, latest_trial2, ingest_date, 
 -- left out of PARTITION BY clause: 'lead_date' and 'ingest_date'
 -- the value of the row_num is that I can reference it later when I attempt to preserve the latest lead_date (all others should be overwritten in the 'stored_procedure_create_tables_stack_job.sql)
 row_number() OVER(PARTITION BY type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration, latest_trial2 order by ingest_date desc) row_num
-FROM consolidated_mem_type c_temp)
+FROM consolidated_mem_type_temp c_temp)
 -- select for row with the latest
 SELECT *
 FROM row_num_table 
 WHERE ingest_date = 
 (SELECT max(ingest_date) 
-from consolidated_mem_type inner_c 
-WHERE row_num_table.email = inner_c.email 
-AND row_num_table.type = inner_c.type 
-AND row_num_table.type_raw = inner_c.type_raw 
-AND row_num_table.start_dt = inner_c.start_dt 
-AND row_num_table.type_clean = inner_c.type_clean
-AND row_num_table.trial_expiration = inner_c.trial_expiration
-AND row_num_table.latest_trial2 = inner_c.latest_trial2);
+from consolidated_mem_type_temp inner_c 
+WHERE inner_c.email = row_num_table.email
+AND inner_c.type = row_num_table.type  
+AND inner_c.type_raw = row_num_table.type_raw
+AND inner_c.start_dt = row_num_table.start_dt
+AND inner_c.type_clean = row_num_table.type_clean
+-- trial_expiration to be removed because it carries NULL values, which will negate the JOIN
+-- AND inner_c.trial_expiration = row_num_table.trial_expiration 
+AND inner_c.latest_trial2 = row_num_table.latest_trial2);
 
 -- QA options: table length of 2nd temp table should be > records of pre-existing prod table and have a 'start_dt' range spanning beginning of legacy prod to end of latest table ingest
 

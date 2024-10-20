@@ -9,7 +9,7 @@
 -- join mem_status to mem_type, which is the only way to associate prevailing membership type (mem_typeXXX.type_clean) to mem_status activity; then stack so that each row is a membership event period for ea email (records having null values for mt_type_clean are mem_type original records; it's mem_status that will have non-null values)
 -- UPDATING STATEMENT to replace the "lead_date" for "TYPE" rows
 -- the lead and start_dt fields are exclusive to either type or status changes, this is bc I related all status changes to the prevailing type and I need the type range in order to accomplish that; this means I HAVE TO recompute the lead/start date post compilation
- 
+-- orchestration.ipynb creates the two consolidated tables (type and status) from the output tables of the respective stored procedures for those tables; code snippet: the copy_rename('consolidated_mem_status_temp2', ['consolidated_mem_status','consolidated_mem_status_temp'], 'consolidated_mem_status')
 DROP PROCEDURE IF EXISTS stackjob_creations;
 
 DELIMITER //

@@ -64,7 +64,7 @@ DROP TABLE IF EXISTS consolidated_mem_status_temp2;
 CREATE TABLE consolidated_mem_status_temp2 AS
 WITH row_num_table AS (
 -- SELECT c_temp.*,
-SELECT type, type_raw, start_dt, datetimerange, type_clean, email, ingest_date, 
+SELECT type, type_raw, start_dt, datetimerange, type_clean, email, ingest_date, lead_date,
 -- left out of PARTITION BY clause: 'lead_date' and 'ingest_date'
 -- the value of the row_num is that I can reference it later when I attempt to preserve the latest lead_date (all others should be overwritten in the 'stored_procedure_create_tables_stack_job.sql)
 row_number() OVER(PARTITION BY type, type_raw, start_dt, datetimerange, type_clean, email order by ingest_date desc) row_num

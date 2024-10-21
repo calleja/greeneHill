@@ -73,7 +73,7 @@ DROP TABLE IF EXISTS consolidated_mem_type_temp2;
 CREATE TABLE consolidated_mem_type_temp2 AS
 WITH row_num_table AS (
 -- SELECT c_temp.*,
-SELECT type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration, latest_trial2, ingest_date, 
+SELECT type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration, latest_trial2, ingest_date, lead_date,
 -- left out of PARTITION BY clause: 'lead_date' and 'ingest_date'
 -- the value of the row_num is that I can reference it later when I attempt to preserve the latest lead_date (all others should be overwritten in the 'stored_procedure_create_tables_stack_job.sql)
 row_number() OVER(PARTITION BY type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration, latest_trial2 order by ingest_date desc) row_num
@@ -92,6 +92,19 @@ AND inner_c.type_clean = row_num_table.type_clean
 -- trial_expiration to be removed because it carries NULL values, which will negate the JOIN
 -- AND inner_c.trial_expiration = row_num_table.trial_expiration 
 AND inner_c.latest_trial2 = row_num_table.latest_trial2);
+
+-- re-run lead_date logic for quality assurance
+WITH prelim AS (
+SELECT temp2.*, LEAD(date_sub(start_dt, interval 1 day)) OVER(PARTITION BY email ORDER BY start_dt) date_lead2
+FROM consolidated_mem_type_temp2 temp2
+order by 1,2) 
+UPDATE consolidated_mem_type_temp2 AS status2 
+-- first apply the inner join, then set values of one column (date_lead) to the other col (date_lead2) ON THE SAME ROW; the alternative would be to write a CASE statement, but then I'd end up with a row with which to deal
+-- lead the start_dt of the proceeding status, if one exists and attempt to replace the lead_date field for the type row
+INNER JOIN prelim x 
+ON status2.email = x.email AND status2.start_dt = x.start_dt AND status2.type_clean = x.type_clean
+SET status2.lead_date = x.date_lead2 
+WHERE x.date_lead2 IS NOT NULL;
 
 -- QA options: table length of 2nd temp table should be > records of pre-existing prod table and have a 'start_dt' range spanning beginning of legacy prod to end of latest table ingest
 

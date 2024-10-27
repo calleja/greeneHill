@@ -25,7 +25,7 @@ INSERT INTO consolidated_mem_status_temp SELECT * FROM consolidated_mem_status;
 -- STEP 2: DELETE RECORDS MEETING CRITERIA FROM TEMPORARY TABLE VERSION
 -- replace w/most recent report download
 SET @initial_dt = (SELECT min(start_dt) FROM membership.mem_status_new_import);
-DELETE FROM consolidated_mem_status_temp WHERE start_dt > @initial_dt;
+DELETE FROM consolidated_mem_status_temp WHERE start_dt >= @initial_dt;
 
 -- STEP 3: insert new records into first temp table
 -- make sure to account for 'ingest_date' field
@@ -80,6 +80,19 @@ AND inner_c.type = row_num_table.type
 AND inner_c.type_raw = row_num_table.type_raw
 AND inner_c.start_dt = row_num_table.start_dt
 AND inner_c.type_clean = row_num_table.type_clean);
+
+-- re-run lead_date logic for quality assurance
+WITH prelim AS (
+SELECT temp2.*, LEAD(date_sub(start_dt, interval 1 day)) OVER(PARTITION BY email ORDER BY start_dt) date_lead2
+FROM consolidated_mem_status_temp2 temp2
+order by 1,2) 
+UPDATE consolidated_mem_status_temp2 AS status2 
+-- first apply the inner join, then set values of one column (date_lead) to the other col (date_lead2) ON THE SAME ROW; the alternative would be to write a CASE statement, but then I'd end up with a row with which to deal
+-- lead the start_dt of the proceeding status, if one exists and attempt to replace the lead_date field for the type row
+INNER JOIN prelim x 
+ON status2.email = x.email AND status2.start_dt = x.start_dt AND status2.type_clean = x.type_clean
+SET status2.lead_date = x.date_lead2 
+WHERE x.date_lead2 IS NOT NULL;
 
 /* legacy de-dupe code:
 DROP TABLE IF EXISTS consolidated_mem_status_temp2;

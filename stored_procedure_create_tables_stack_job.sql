@@ -86,6 +86,18 @@ ON sj2.mt_email = x.mt_email AND sj2.activity = x.activity -- ensure that we onl
 SET sj2.lead_date = x.date_lead2 
 WHERE sj2.activity_calc = 'initial enrollment' AND x.date_lead2 IS NOT NULL;
 
+-- TODO 10/21/2024: cases of multiple changes on the same day messes up the lead_date logic. Email sent to August and Renee on 10/21/24
+-- query to  surface members with multiple records on the same day:
+WITH multiples AS (
+SELECT mt_email, start_dt, count(*)
+FROM stack_job2
+GROUP BY mt_email, start_dt
+HAVING COUNT(*) > 1)
+SELECT sj.mt_email, sj.start_dt, sj.activity, sj.mem_type, sj.type_raw 
+FROM stack_job2 sj
+INNER JOIN multiples m ON sj.mt_email = m.mt_email AND sj.start_dt = m.start_dt
+order by 2 desc,1,3;
+
 -- UPDATE lead_date on the last record for each email to curren date; lead_date in the case of the final row by email is hard coded to pipeline run date on the .ipynb file, and can be stale... but ultimately, that was the last run date, and most precise
 
 /* values text_status_indicator; these will need to be recorded (overwite) in the activity_calc field
@@ -115,6 +127,7 @@ WHERE sj2.activity_calc = 'initial enrollment'
 -- apply update on cases where there is a single activity record 
 AND sj2.row_num = 1 
 AND sj2.total_rows = 1;
+
 
 END //
 DELIMITER ;

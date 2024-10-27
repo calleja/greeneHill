@@ -159,18 +159,20 @@ from membership.mem_type_0217;
 
 -- one-off queries to investigate particular persons
 select * 
-from mem_type_0927
-where email IN ('mateotaussig@gmail.com','gabrielagamache@gmail.com') 
-order by email;
+from consolidated_mem_type
+where email IN ('lilien.sophie@gmail.com') 
+order by start_dt;
 -- one-off queries to investigate particular persons
+
 select * 
-from mem_status_0927
-where email IN ('mateotaussig@gmail.com','gabrielagamache@gmail.com','br.weinkle@gmail.com') 
+from consolidated_mem_status
+where email IN ('amelia.h.clark@gmail.com') 
 order by email , start_dt asc;
--- curated tables
-SELECT * 
-FROM stack_jobII
-where mt_email IN('aubreygrowsfood@gmail.com');
+
+select * 
+from stack_job2 sj 
+where mt_email IN ('lilien.sophie@gmail.com') 
+order by mt_email , start_dt asc;
 
 /*mem_type_1112,mem_status_1112
 consolidated_mem_status,consolidated_mem_type*/

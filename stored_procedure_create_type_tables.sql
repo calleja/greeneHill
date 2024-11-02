@@ -1,8 +1,11 @@
 /*
 Stored procedure accomplishes the following:
-1) copy contents of current prod table "consolidated_mem_type" into a temp table and remove all records that appear in the new import (as of "start_dt" field)
+1) copy contents of current prod table "consolidated_mem_type" into a temp table and remove from it all records that appear AFTER the earliest "start_dt" of the new import 
 2) insert all contents of new import table ("type") into the temp table
-3) check for and remove duplicates (requires making a second TEMP table)
+3) bring forward the lead date of the last record
+4) check for and remove duplicates (requires making a second TEMP table)
+5) overwrite and reasses lead_date field
+
 
 expected table names: consolidated_mem_type, (during test) mem_type_0217
 
@@ -36,8 +39,8 @@ select type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, tr
 from membership.mem_type_new_import 
 GROUP BY 1,2,3,4,5,6,7,8,9;
 
--- STEP 4 - DELETE DUPES: requires making ANOTHER temp table; this NEW table ("consolidated_mem_type_temp2") is the new de-duped membership table, and is the PROD version going forward
--- first segment of the logic overwrites the lead_date field in order to refresh it by "bringing it forward" to the "report date"/ingest_date of the newest data import. Rationale: lead_date is designated at report run date in the .ipynb file, but this has to be brought forward each time the script is run. Only the final record of each member's activity should be brought forward; the earlier (lead_date) ones should be preserved. After the records are accurately brought forward it's appropriate to run the de-dupe script; 
+-- STEP 4
+-- first segment of the logic overwrites the lead_date field in order to refresh it by "bringing it forward" to the "report date"/ingest_date of the newest data import. Rationale: lead_date is designated at report run date in the civiActivityReport.ipynb file, but this has to be brought forward each time the script is run. Only the final record of each member's activity should be brought forward; the earlier (lead_date) ones should be preserved. After the records are accurately brought forward it's appropriate to run the de-dupe script; 
 -- TODO: this procedure must also be copied to the "status" stored procedure
 -- STEP 4a (date-forwarding segment): project a row number onto ea record of ea member's activity
 -- i. declare a variable used for UPDATING the lead_date
@@ -92,6 +95,8 @@ AND inner_c.type_clean = row_num_table.type_clean
 -- trial_expiration to be removed because it carries NULL values, which will negate the JOIN
 -- AND inner_c.trial_expiration = row_num_table.trial_expiration 
 AND inner_c.latest_trial2 = row_num_table.latest_trial2);
+
+-- HANDLE CASES where multiple type or status entries are made on the same day; solution: select the latest
 
 -- re-run lead_date logic for quality assurance
 WITH prelim AS (

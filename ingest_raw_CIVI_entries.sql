@@ -9,7 +9,7 @@ A QA hub for Membership committee entries in CIVI, capturing:
 -- TODO 10/21/2024: cases of multiple changes on the same day messes up the lead_date logic. Email sent to August and Renee on 10/21/24
 -- query to  surface members with multiple records on the same day:
 WITH multiples AS (
-SELECT mt_email, start_dt, count(*)
+SELECT mt_email, start_dt, count(*) -- NOTE: this query groups on start_dt, a precise timestamp, other options are to aggregate on a longer timespan like calendar day
 FROM stack_job2
 GROUP BY mt_email, start_dt
 HAVING COUNT(*) > 1)

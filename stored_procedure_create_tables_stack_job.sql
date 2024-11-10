@@ -21,13 +21,14 @@ BEGIN
 DROP TABLE IF EXISTS stack_job2;
 
 -- join status to type: left join status to type when the status occurs within the range of start_dt & lead_dt of the status type
+-- TODO: remove any trial related status activity so as not to muck up Membership activity in cases of overlap (ex. a Member converts before trial expires); this will essentially move all trial related activity off
 CREATE TABLE stack_job2 AS
 WITH mt_ms AS (
 SELECT mt.email mt_email, mt.start_dt mt_start_dt, mt.lead_date mt_lead_date, mt.type_clean mt_type_clean, mt.type_raw mt_type_raw, mt.trial_expiration mt_trial_expiration, 
 -- add a cancel flag, which is necessary for cases where there are no mem_status records (typically observed when members' sign up date < 2019)
 CASE WHEN mt.type_raw LIKE '%Cancelled%' THEN 'Y' ELSE 'N' END mt_cancel_flag,
 ms.start_dt ms_start_dt, ms.lead_date ms_lead_date, ms.type_clean ms_type_clean, ms.type_raw ms_type_raw  
-from consolidated_mem_type mt
+FROM consolidated_mem_type mt
 -- from mem_type_1204 mt (older version of one-off)
 LEFT JOIN consolidated_mem_status ms ON mt.email = ms.email
 -- LEFT JOIN mem_status_1204 ms ON mt.email = ms.email (older version of one-off)
@@ -51,8 +52,10 @@ UNION ALL
 SELECT mt_email, ms_start_dt start_dt, ms_lead_date lead_date, ms_type_clean activity, mt_type_clean mem_type, ms_type_raw type_raw, NULL mt_cancel_flag
 FROM mt_ms
 -- ms_type_clean values related to trial activity are '%trial%', 'cancelled', 'deactivated'
-WHERE ms_type_clean not like '%trial%' 
-AND lower(mt_type_clean) NOT LIKE '%trial'), 
+WHERE lower(ms_type_clean) not like '%trial%' 
+AND lower(mt_type_clean) NOT LIKE '%trial' 
+-- latest addition ao 11/10/24
+AND lower(ms_type_raw) NOT LIKE '%to expired%'), 
 -- penultimo introduced in order to make space for the window functions below 'row_num' and 'total_rows'
 penultimo AS (
 select stacked.*, CASE WHEN activity = mem_type THEN 'initial enrollment' ELSE activity END AS activity_calc, 
@@ -86,17 +89,7 @@ ON sj2.mt_email = x.mt_email AND sj2.activity = x.activity -- ensure that we onl
 SET sj2.lead_date = x.date_lead2 
 WHERE sj2.activity_calc = 'initial enrollment' AND x.date_lead2 IS NOT NULL;
 
--- TODO 10/21/2024: cases of multiple changes on the same day messes up the lead_date logic. Email sent to August and Renee on 10/21/24
--- query to  surface members with multiple records on the same day:
-WITH multiples AS (
-SELECT mt_email, start_dt, count(*)
-FROM stack_job2
-GROUP BY mt_email, start_dt
-HAVING COUNT(*) > 1)
-SELECT sj.mt_email, sj.start_dt, sj.activity, sj.mem_type, sj.type_raw 
-FROM stack_job2 sj
-INNER JOIN multiples m ON sj.mt_email = m.mt_email AND sj.start_dt = m.start_dt
-order by 2 desc,1,3;
+
 
 -- UPDATE lead_date on the last record for each email to curren date; lead_date in the case of the final row by email is hard coded to pipeline run date on the .ipynb file, and can be stale... but ultimately, that was the last run date, and most precise
 

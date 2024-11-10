@@ -96,8 +96,6 @@ AND inner_c.type_clean = row_num_table.type_clean
 -- AND inner_c.trial_expiration = row_num_table.trial_expiration 
 AND inner_c.latest_trial2 = row_num_table.latest_trial2);
 
--- HANDLE CASES where multiple type or status entries are made on the same day; solution: select the latest
-
 -- re-run lead_date logic for quality assurance
 WITH prelim AS (
 SELECT temp2.*, LEAD(date_sub(start_dt, interval 1 day)) OVER(PARTITION BY email ORDER BY start_dt) date_lead2

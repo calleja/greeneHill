@@ -908,19 +908,67 @@ SELECT *
 FROM final_tbl;
 
 -- APPROXIMATE A CHURN RATE FOR PSFC LOAN
+SET @current_dt = date('2024-06-01');
+SET @t_30 = DATE_SUB(@current_dt, INTERVAL 30 DAY);
+-- on all rows of stack_job2 I can access activity and mem_type; dates are in timsteamp
 WITH curr AS (
 select mt_email curr_mt_email, mem_type curr_mem_type, activity_calc curr_activity_calc, activity curr_activity 
 from stack_job2 
-WHERE date('2024-05-31') between start_dt AND lead_date 
+WHERE @current_dt between start_dt AND lead_date 
 ORDER BY mt_email), 
 prev AS (
 select mt_email prev_mt_email, mem_type prev_mem_type, activity_calc prev_activity_calc, activity prev_activity 
 from stack_job2 
-WHERE date('2024-04-30') between start_dt AND lead_date 
-ORDER BY mt_email)
-SELECT date('2024-05-31') current_month, *
+WHERE @t_30 between start_dt AND lead_date 
+ORDER BY mt_email),
+-- join the two above to determine the designations: pairs of t0/t-30
+assigned_status AS (
+SELECT *, @current_dt current_dt,
+CASE WHEN curr_activity_calc IN ('technical activation', 'technical reactivation', 'winback','initial enrollment') 
+AND prev_activity_calc IN ('technical activation', 'technical reactivation', 'winback','initial enrollment')
+THEN "active throughout"
+WHEN curr_activity_calc IN ('cancelled', 'care giving leave', 'deactivate', 'deactivated', 'disability leave', 'general leave', 'medical leave',
+'parental leave', 'suspended') 
+AND prev_activity_calc IN ('technical activation', 'technical reactivation', 'winback','initial enrollment')
+THEN "churners"
+WHEN curr_activity_calc IS NULL
+AND prev_activity_calc IN ('technical activation', 'technical reactivation', 'winback','initial enrollment')
+THEN "churners"
+ELSE 'irrelevant'
+END AS mom_active_status
 FROM curr 
-LEFT JOIN prev ON curr_mt_email = prev_mt_email;
+LEFT JOIN prev ON curr_mt_email = prev_mt_email 
+ORDER BY curr_mt_email) 
+SELECT current_dt, mom_active_status , count(*) cnt
+FROM assigned_status
+GROUP BY 1,2;
+
+/*
+-- inactive activity_calc --
+cancelled
+care giving leave
+deactivate
+deactivated
+disability leave
+general leave
+medical leave
+parental leave
+suspended
+
+-- active activity_calc types --
+technical activation
+technical reactivation
+winback
+initial enrollment*/
+
+-- loan application membership question: How many members have been members in good standing for 6 months or longer? 
+-- ao 10/1/2024 calc the day diff between any "active" status members and lead_date (if the activity_calc of the previous type was also active, then drill down one )
+SET @current_dt = date('2024-06-01');
+SELECT lead()
+from stack_job2 
+WHERE 1=1
+AND @current_dt BETWEEN start_dt AND lead_date 
+WHERE curr_activity_calc IN ('technical activation', 'technical reactivation', 'winback','initial enrollment') 
 
 -- INVESTIGATE HOW BEST TO IDENTIFY AND JOIN TRIAL DATA (ORIGINALLY TAKEN FROM 'stored_procedure_trial_shopping.sql')
 WITH prep AS (

@@ -246,7 +246,14 @@ order by email, start_dt asc;
 
 -- historical trial starts
 select date_format(start_dt, '%Y-%m') as month, count(distinct email) as count
-from mem_type_0101
+from consolidated_mem_type
+where type_clean like '%trial%'
+group by 1
+order by 1 desc;
+
+-- historical membership starts
+select date_format(start_dt, '%Y-%m') as month, count(distinct email) as count
+from consolidated_mem_type
 where type_clean like '%trial%'
 group by 1
 order by 1 desc;
@@ -617,6 +624,13 @@ FROM sj
 INNER JOIN active_roster ar ON trim(lower(sj.mt_email)) = trim(lower(ar.Email))
 group by 1,2,3,4,5,6,7,8,9,10
 order by sj.mt_email, sj.start_dt asc;
+
+-- QA the surge of new members observed between 10/15/2024 AND 12/01/2024
+SELECT *
+FROM stack_job2
+WHERE start_dt BETWEEN date('2024-10-15') AND date('2024-12-01')
+ORDER BY mt_email, start_dt
+LIMIT 20;
 
 -- missing cases: these emails are 
 -- "active_roster" is the CIVI table (imported into db by way of 'ingestMemberShopping.ipynb'

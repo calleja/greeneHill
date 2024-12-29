@@ -33,11 +33,12 @@ DELETE FROM consolidated_mem_type_temp WHERE start_dt >= @initial_dt;
 
 -- STEP 3: insert new records into first temp table
 -- make sure to account for 'ingest_date' field bc it could be duplicated in certain circumstances
-INSERT INTO consolidated_mem_type_temp
-select type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, trial_expiration, latest_trial2, max(ingest_date) ingest_date
+INSERT INTO consolidated_mem_type_temp (type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration,  latest_trial2, lead_date, ingest_date)
+select type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration,  latest_trial2, lead_date, max(ingest_date) ingest_date   
 -- new table of data
 from membership.mem_type_new_import 
 GROUP BY 1,2,3,4,5,6,7,8,9;
+
 
 -- STEP 4
 -- first segment of the logic overwrites the lead_date field in order to refresh it by "bringing it forward" to the "report date"/ingest_date of the newest data import. Rationale: lead_date is designated at report run date in the civiActivityReport.ipynb file, but this has to be brought forward each time the script is run. Only the final record of each member's activity should be brought forward; the earlier (lead_date) ones should be preserved. After the records are accurately brought forward it's appropriate to run the de-dupe script; 
@@ -76,11 +77,12 @@ DROP TABLE IF EXISTS consolidated_mem_type_temp2;
 CREATE TABLE consolidated_mem_type_temp2 AS
 WITH row_num_table AS (
 -- SELECT c_temp.*,
-SELECT type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration, latest_trial2, ingest_date, lead_date,
+SELECT type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration, latest_trial2, ingest_date, lead_date
 -- left out of PARTITION BY clause: 'lead_date' and 'ingest_date'
 -- the value of the row_num is that I can reference it later when I attempt to preserve the latest lead_date (all others should be overwritten in the 'stored_procedure_create_tables_stack_job.sql)
-row_number() OVER(PARTITION BY type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration, latest_trial2 order by ingest_date desc) row_num
-FROM consolidated_mem_type_temp c_temp)
+-- row_number() OVER(PARTITION BY type, type_raw, start_dt, datetimerange, type_clean, email, trial_expiration, latest_trial2 order by ingest_date desc) row_num
+FROM consolidated_mem_type_temp c_temp 
+GROUP BY 1,2,3,4,5,6,7,8,9,10)
 -- select for row with the latest
 SELECT *
 FROM row_num_table 

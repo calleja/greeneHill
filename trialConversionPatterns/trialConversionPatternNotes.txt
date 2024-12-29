@@ -1,0 +1,51 @@
+Plot membership starts:
+
+SELECT date_format(start_dt, '%Y-%m') month, count(distinct mt_email)
+FROM stack_job2
+WHERE activity_calc = 'initial enrollment'
+GROUP BY 1
+ORDER BY 1;
+
+
+track those starts that had a historic trial, and of those, which had conversions
+
+
+WITH setup AS (
+SELECT email, start_dt, type_raw, type_clean, lead_date,
+CASE
+WHEN type_clean = '2 mo trial' THEN 1
+WHEN type_clean = '6 mo trial' THEN 2
+ELSE NULL
+END AS trial_proxy,
+cast(JSON_EXTRACT(latest_trial2, '$.start_dt') as date) last_trial_start, ROW_NUMBER() OVER(PARTITION BY email ORDER BY start_dt) row_num
+FROM consolidated_mem_type
+where type_clean like '%trial%'
+ORDER BY email, start_dt asc),
+-- and which had trial rollovers (2 and 6 month trials)
+trial_agg AS (SELECT email, max(row_num) tot_trials, max(start_dt) last_trial_start, max(trial_proxy) AS trial_proxy
+FROM setup
+GROUP BY 1
+ORDER BY 1),
+mem_starts AS (
+SELECT sj.mt_email, sj.start_dt, sj.activity_calc, sj.mem_type
+FROM stack_job2 sj
+WHERE sj.activity_calc = 'initial enrollment'
+GROUP BY 1,2,3,4),
+-- LEFT JOIN
+joined_data AS (
+SELECT ms.*, trial_agg.tot_trials, trial_agg.last_trial_start, trial_agg.trial_proxy
+FROM mem_starts ms
+LEFT JOIN trial_agg
+ON ms.mt_email = trial_agg.email
+ORDER BY 1)
+SELECT mt_email, start_dt AS full_mem_start_dt, activity_calc, mem_type,
+CASE WHEN tot_trials IS NULL THEN 'no trial' ELSE tot_trials END AS tot_trials,
+CASE
+WHEN trial_proxy = 1 THEN '2 mo trial'
+WHEN trial_proxy = 2 THEN '6 mo trial'
+ELSE 'no trial'
+END AS trial_type,
+last_trial_start
+FROM joined_data
+LIMIT 10;
+

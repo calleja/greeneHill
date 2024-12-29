@@ -975,14 +975,54 @@ technical reactivation
 winback
 initial enrollment*/
 
--- loan application membership question: How many members have been members in good standing for 6 months or longer? 
+-- PSFC loan application membership question: How many members have been members in good standing for 6 months or longer? 
 -- ao 10/1/2024 calc the day diff between any "active" status members and lead_date (if the activity_calc of the previous type was also active, then drill down one )
-SET @current_dt = date('2024-06-01');
-SELECT lead()
-from stack_job2 
-WHERE 1=1
-AND @current_dt BETWEEN start_dt AND lead_date 
-WHERE curr_activity_calc IN ('technical activation', 'technical reactivation', 'winback','initial enrollment') 
+-- alternative #2: take 2 snapshots of their member type and status
+-- alternative #3: group 
+WITH activity_array AS (
+SELECT mt_email, JSON_ARRAYAGG(activity_calc) activity_calc_array
+FROM stack_job2
+WHERE DATE(lead_date) > DATE_SUB(CURRENT_DATE(), INTERVAL 6 MONTH)
+GROUP BY 1)
+SELECT *
+FROM activity_array
+-- can't contain cancelled, general leave, deactivate, medical leave, parental leave, suspended, care giving leave
+WHERE NOT JSON_CONTAINS(activity_calc_array,'"cancelled"')
+AND NOT JSON_CONTAINS(activity_calc_array,'"general leave"') 
+AND NOT JSON_CONTAINS(activity_calc_array,'"deactivate"')
+AND NOT JSON_CONTAINS(activity_calc_array,'"medical leave"')
+AND NOT JSON_CONTAINS(activity_calc_array,'"suspended"')
+AND NOT JSON_CONTAINS(activity_calc_array,'"parental leave"')
+AND NOT JSON_CONTAINS(activity_calc_array,'"care giving leave"')
+AND NOT JSON_CONTAINS(activity_calc_array,'"deactivated"') 
+AND mt_email NOT LIKE '%test%';
+
+-- PSFC loan question cont. What is the average rate of enrollment of new members over the last six months?  members /month Comment end  
+-- rolling 6 month
+-- will require expanding the stack_job2 table on calendar dates
+/*AVG(val) OVER (PARTITION BY subject ORDER BY time
+                        ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) */
+WITH agg_counts AS (
+-- aggregate on start_dt, which is a timestamp originally	
+SELECT DATE(start_dt) start_dt, COUNT(DISTINCT sj.mt_email) new_signups
+FROM stack_job2 sj 
+WHERE TRIM(LOWER(sj.activity_calc)) = 'initial enrollment'
+GROUP BY 1 
+order by 1 desc), 
+raw_data AS (
+SELECT cal.calendar_date, SUM(new_signups) new_signups
+FROM calendar cal 
+LEFT JOIN agg_counts ON cal.calendar_date = agg_counts.start_dt 
+WHERE cal.calendar_date BETWEEN date_sub(current_date(), interval 180 day) AND DATE('2024-12-01') -- as of the last 180 days
+GROUP BY 1
+ORDER BY 1 desc), 
+running_signups AS (
+SELECT calendar_date, sum(new_signups) OVER(ORDER BY calendar_date ASC ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) rolling_signups
+FROM raw_data 
+ORDER BY 1 DESC 
+LIMIT 100)
+SELECT AVG(rolling_signups) 
+FROM running_signups;
 
 -- INVESTIGATE HOW BEST TO IDENTIFY AND JOIN TRIAL DATA (ORIGINALLY TAKEN FROM 'stored_procedure_trial_shopping.sql')
 WITH prep AS (
@@ -1005,9 +1045,79 @@ AND trial_dt is not null)
 i. trial length from that which they converted
 ii. trial history (whether they initiated one prior to their last)
 iii. gaps btwn their trial iterations and/or trial expiration and final signup
-
-proposal table: email, latest trial metadata, # of total trials, count of trial by trial length, conversion date, date diff btwn last two trials, date diff btwn last trial and conversion date
 */
+-- TRIAL ANALYSIS: LOOK AT MULTIPLE TRIAL STARTS (EITHER ROLLOVERS OR REPEATS)
+WITH multiple_trials AS (
+select email, count(*) trials_cnt
+from consolidated_mem_type
+where type_clean like '%trial%'
+AND start_dt > DATE('2019-06-01')
+group by 1
+HAVING count(*) > 1
+order by 2 desc),
+raw_data AS
+(SELECT email, start_dt, type_raw, type_clean, lead_date, cast(JSON_EXTRACT(latest_trial2, '$.start_dt') as date) last_trial_start
+FROM consolidated_mem_type
+where type_clean like '%trial%' 
+AND email IN (SELECT email FROM multiple_trials GROUP BY 1)
+ORDER BY 1,2),
+-- consolidate type clean values
+consolidated_arrays AS (
+SELECT email, JSON_ARRAYAGG(type_clean) type_clean_array, max(start_dt) max_start_date
+FROM raw_data 
+GROUP BY 1)
+SELECT YEAR(max_start_date) year, count(distinct email) 
+FROM consolidated_arrays
+GROUP BY 1
+ORDER BY 1;
+
+-- RSTUDIO code which likely double counts multi-trials, which isn't the end of the world; the 
+select 
+date_format(start_dt, '%Y-%m') as month, 
+type_clean,  
+CASE WHEN date(start_dt) <> cast(JSON_EXTRACT(latest_trial2, '$.start_dt') as date) THEN 'rollover' ELSE 'initial' END AS trial_seq, 
+count(distinct email) as count
+from consolidated_mem_type
+where type_clean like '%trial%'
+AND start_dt > DATE('2019-06-01')
+group by 1,2,3
+order by 1 desc,2;
+
+
+-- the above trial analysis query should match with the below:
+WITH raw AS (
+select 
+YEAR(start_dt) year, 
+type_clean,  
+-- this logic is questionable: make sure I'm not double counting; and be sure that I'm counting from the last trial, and not the first (which coincides with the logic from the query above)
+CASE WHEN date(start_dt) <> cast(JSON_EXTRACT(latest_trial2, '$.start_dt') as date) THEN 'rollover' ELSE 'initial' END AS trial_seq, 
+count(distinct email) as count
+from consolidated_mem_type
+where type_clean like '%trial%'
+AND start_dt > DATE('2019-06-01')
+group by 1,2,3
+order by 1 desc,2)
+SELECT year, sum(count)
+FROM raw 
+WHERE trial_seq = 'rollover' 
+GROUP BY 1
+ORDER BY 1 DESC;
+
+-- PROD VERSION OF TRIAL TIMESERIES
+WITH setup AS (
+SELECT email, start_dt, type_raw, type_clean, lead_date, cast(JSON_EXTRACT(latest_trial2, '$.start_dt') as date) last_trial_start, 
+ROW_NUMBER() OVER(PARTITION BY email ORDER BY start_dt) row_num
+FROM consolidated_mem_type
+where type_clean like '%trial%' 
+ORDER BY email, start_dt asc)
+SELECT date_format(start_dt,'%Y-%m') as month, type_clean,
+CASE WHEN row_num = 2 THEN 'rollover' ELSE 'initial' END AS trial_seq, count(distinct email) cnt
+FROM setup
+GROUP BY 1,2,3 
+ORDER BY 1;
+
+-- proposal table: email, latest trial metadata, # of total trials, count of trial by trial length, conversion date, date diff btwn last two trials, date diff btwn last trial and conversion date
+
 CREATE TABLE trial_meta_all AS
 WITH all_trials AS (SELECT *
 FROM consolidated_mem_type

@@ -29,7 +29,7 @@ DELETE FROM consolidated_mem_status_temp WHERE start_dt >= @initial_dt;
 
 -- STEP 3: insert new records into first temp table
 -- make sure to account for 'ingest_date' field
-INSERT INTO consolidated_mem_status_temp
+INSERT INTO consolidated_mem_status_temp (type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, ingest_date)
 select type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, max(ingest_date) ingest_date
 -- new table of data
 from membership.mem_status_new_import 
@@ -64,11 +64,12 @@ DROP TABLE IF EXISTS consolidated_mem_status_temp2;
 CREATE TABLE consolidated_mem_status_temp2 AS
 WITH row_num_table AS (
 -- SELECT c_temp.*,
-SELECT type, type_raw, start_dt, datetimerange, type_clean, email, ingest_date, lead_date,
+SELECT type, type_raw, start_dt, datetimerange, type_clean, email, ingest_date, lead_date
 -- left out of PARTITION BY clause: 'lead_date' and 'ingest_date'
 -- the value of the row_num is that I can reference it later when I attempt to preserve the latest lead_date (all others should be overwritten in the 'stored_procedure_create_tables_stack_job.sql)
-row_number() OVER(PARTITION BY type, type_raw, start_dt, datetimerange, type_clean, email order by ingest_date desc) row_num
-FROM consolidated_mem_status_temp c_temp)
+-- row_number() OVER(PARTITION BY type, type_raw, start_dt, datetimerange, type_clean, email order by ingest_date desc) row_num
+FROM consolidated_mem_status_temp c_temp 
+GROUP BY 1,2,3,4,5,6,7,8)
 -- select for row with the latest
 SELECT *
 FROM row_num_table 

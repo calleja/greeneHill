@@ -8,8 +8,7 @@ ORDER BY 1;
 
 
 track those starts that had a historic trial, and of those, which had conversions
-
-
+-- if a member had two trials, how are they represented? twice, only the last, et al?
 WITH setup AS (
 SELECT email, start_dt, type_raw, type_clean, lead_date,
 CASE
@@ -21,17 +20,19 @@ cast(JSON_EXTRACT(latest_trial2, '$.start_dt') as date) last_trial_start, ROW_NU
 FROM consolidated_mem_type
 where type_clean like '%trial%'
 ORDER BY email, start_dt asc),
+-- metadata: the last and highest trial type
 -- and which had trial rollovers (2 and 6 month trials)
 trial_agg AS (SELECT email, max(row_num) tot_trials, max(start_dt) last_trial_start, max(trial_proxy) AS trial_proxy
 FROM setup
 GROUP BY 1
 ORDER BY 1),
+-- initial enrollment data from stack_job2
 mem_starts AS (
 SELECT sj.mt_email, sj.start_dt, sj.activity_calc, sj.mem_type
 FROM stack_job2 sj
 WHERE sj.activity_calc = 'initial enrollment'
 GROUP BY 1,2,3,4),
--- LEFT JOIN
+-- LEFT JOIN: initial enrollment data with trial metadata (last and highest)
 joined_data AS (
 SELECT ms.*, trial_agg.tot_trials, trial_agg.last_trial_start, trial_agg.trial_proxy
 FROM mem_starts ms
@@ -49,3 +50,42 @@ last_trial_start
 FROM joined_data
 LIMIT 10;
 
+Going about it a different way: what is the conversion success rate on 2-mo and 6-mo trial members (what is the proportion of conversion success)
+#calculate success on 2-mo only (exclude those that rolled over to a 6 mo), 6-mo only, extended trial (signed up for 6 mo after a 2 mo)
+
+-- conversion success on 2 mo ONLY trial members --
+-- carve out all trial activity (2 and 6 mo)
+WITH setup AS (
+SELECT email, start_dt, type_raw, type_clean, lead_date,
+CASE
+WHEN type_clean = '2 mo trial' THEN 1
+WHEN type_clean = '6 mo trial' THEN 2
+ELSE NULL
+END AS trial_proxy,
+cast(JSON_EXTRACT(latest_trial2, '$.start_dt') as date) last_trial_start, ROW_NUMBER() OVER(PARTITION BY email ORDER BY start_dt) row_num
+FROM consolidated_mem_type
+where type_clean like '%trial%'
+ORDER BY email, start_dt asc),
+-- and which had trial rollovers (2 and 6 month trials)
+trial_agg AS (SELECT email, max(row_num) tot_trials, max(start_dt) last_trial_start, max(trial_proxy) AS trial_type_proxy_greatest
+FROM setup
+GROUP BY 1
+ORDER BY 1),
+-- rejoin the metadata from trial_agg to the individual trials from CTE 'setup'
+all_trial AS (
+SELECT setup.*, trial_agg.*
+FROM setup
+LEFT JOIN trial_agg ON setup.email = trial_agg.email
+ORDER BY setup.email, setup.start_dt),
+-- membership activations data
+mem_starts AS (
+SELECT sj.mt_email mem_start_email, sj.start_dt mem_start_start_dt, sj.activity_calc mem_start_activity_calc, sj.mem_type mem_start_mem_type
+FROM stack_job2 sj
+WHERE sj.activity_calc = 'initial enrollment'
+GROUP BY 1,2,3,4)
+SELECT all_trial.*, mem_starts.*
+FROM all_trial
+LEFT JOIN mem_starts ON all_trial.email = mem_starts.mem_start_email
+
+
+-- analysis of 2 mo trial types ONLY: carve out tot_trials = 1 AND trial_type_proxy_greatest = 1; calculate the conversion rate as a proportion... I need to reporet proportions as of trial start date

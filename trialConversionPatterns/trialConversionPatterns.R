@@ -103,6 +103,19 @@ ggplot() +
     # Features of the first axis
     name = "member count",
     # Add a second axis and specify its features
-    sec.axis = sec_axis( trans=~.*1/40, name="prop w/trial")
+    sec.axis = sec_axis( trans=~.*1/40, name="proportion having trial", labels = scales::percent)
   ) +
   labs(title = "All membership signups broken out by trial types and overlaid with proportion of signups that also started a trial", x = "membership start month")
+
+#plot 
+trial_prop |>
+  mutate(mem_start_month = yearmonth(mem_start_month)) |>
+  as_tsibble(index=mem_start_month) -> ts.prop
+
+#no discernable seasonality apparent from plotting the proportion on a seasonal plot
+ts.prop |>
+  gg_season(prop, labels = 'right') +
+  labs(title = 'Seasonal plot of trial proportion of membership signups', y = 'proportion of signups that had a trial')
+
+#going about it a different way: what is the conversion success rate on 2-mo and 6-mo trial members (what is the proportion of conversion success)
+#calculate success on 2-mo only (exclude those that rolled over to a 6 mo), 6-mo only, extended trial (signed up for 6 mo after a 2 mo)

@@ -903,6 +903,7 @@ GROUP BY 1;
 
 -- ACCOUNT FLOWS PROD TABLE (.IPYNB FILE)
 -- the below code snippet produces the combination of month t and month t-1 "activity calcs" aka the status combinations for a hard-coded pair of months; these counts (unique emails) are ultimately multiplied by the "categorical" matrix that assigns flows to Account Flow categories
+-- prod version recorded in account_flows.ipynb
 WITH curr AS (
 select mt_email curr_mt_email, mem_type curr_mem_type, activity_calc curr_activity_calc, activity curr_activity 
 from stack_job2 
@@ -920,6 +921,23 @@ LEFT JOIN prev ON curr_mt_email = prev_mt_email
 GROUP BY 1,2,3) 
 SELECT * 
 FROM final_tbl;
+
+"WITH curr AS (
+select mt_email curr_mt_email, mem_type curr_mem_type, activity_calc curr_activity_calc, activity curr_activity 
+from stack_job2 
+WHERE date('"+tup_dates[1]+"') between start_dt AND lead_date 
+ORDER BY mt_email), 
+prev AS (
+select mt_email prev_mt_email, mem_type prev_mem_type, activity_calc prev_activity_calc, activity prev_activity 
+from stack_job2 
+WHERE date('"+tup_dates[0]+"') between start_dt AND lead_date 
+ORDER BY mt_email), 
+final_tbl AS (
+SELECT date('"+tup_dates[1]+"') current_month, curr_activity_calc, prev_activity_calc, count(distinct curr_mt_email) unq_email 
+FROM curr 
+LEFT JOIN prev ON curr_mt_email = prev_mt_email 
+GROUP BY 1,2,3) 
+SELECT * FROM final_tbl"
 
 -- APPROXIMATE A CHURN RATE FOR PSFC LOAN
 SET @current_dt = date('2024-06-01');

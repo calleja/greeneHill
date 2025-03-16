@@ -24,6 +24,7 @@ def remove_controller(activityReport_version):
     df_grouped_output = intake_file(activityReport_version)
     if df_grouped_output is None:
         print('the result from intake_file function is empty')
+        return(activityReport_version) #sending back original file and killing any further processes
     else:
         #apply_rules filters for the rows of the DF to keep
         inclusion_df = apply_rules(df_grouped_output)
@@ -60,10 +61,18 @@ def intake_file(activityReport):
         #NOTE 'Activity_Type_act' = specifies if change is for status or type
         # looks like the index is preserved on a groupby
         df_grouped = activityReport.groupby(['Target_Email_act','Activity_Date_DT_act','Activity_Type_act']).filter(lambda x: len(x) > 1)
+        
 
     except ValueError as e:
         raise ValueError(f'fields in this version of the dataframe do not coincide with the code in civiActivityReport_selectBestTrans.py: {e}')
 
+
+    #insert a circuit breaker if there are no cases caught in df_grouped; if df_grouped length = 0 then this will break the program of civiActivityReport
+    if len(df_grouped) == 0:
+        print('pitching back the original dataframe') #accomplish this by introducing None in the control flow
+        return None
+    else:
+        pass
 
     #assign a row value to ea group member: used later for selection
     df_grouped['count'] = df_grouped.groupby(['Target_Email_act','Activity_Date_DT_act','Activity_Type_act']).cumcount()+1

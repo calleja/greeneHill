@@ -28,7 +28,7 @@ INSERT INTO consolidated_civi_temp SELECT * FROM consolidated_civi;
 -- STEP 2: DELETE RECORDS MEETING CRITERIA FROM TEMPORARY TABLE VERSION
 -- replace w/most recent report download
 -- mem_type_new_import was created in orchestration.ipynb and is an exact copy of the latest import file ex. 'mem_type_0722'
-SET @initial_dt = (SELECT min(start_dt) FROM membership.mem_type_new_import);
+SET @initial_dt = (SELECT min(start_dt) FROM memerbship_ard.mem_type_new_import);
 DELETE FROM consolidated_mem_type_temp WHERE start_dt >= @initial_dt;
 
 -- STEP 3: insert new records into first temp table
@@ -36,7 +36,7 @@ DELETE FROM consolidated_mem_type_temp WHERE start_dt >= @initial_dt;
 INSERT INTO consolidated_mem_type_temp
 select type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, trial_expiration, latest_trial2, max(ingest_date) ingest_date
 -- new table of data
-from membership.mem_type_new_import 
+from memerbship_ard.mem_type_new_import 
 GROUP BY 1,2,3,4,5,6,7,8,9;
 
 -- STEP 4
@@ -45,7 +45,7 @@ GROUP BY 1,2,3,4,5,6,7,8,9;
 -- STEP 4a (date-forwarding segment): project a row number onto ea record of ea member's activity
 -- i. declare a variable used for UPDATING the lead_date
 -- ii. records where row_num = max row number for the group are candidates for an UPDATE
-SET @max_lead_date = (SELECT max(ingest_date) FROM membership.mem_type_new_import);
+SET @max_lead_date = (SELECT max(ingest_date) FROM memerbship_ard.mem_type_new_import);
 
 WITH row_ver AS (
 -- changed the ORDER BY clause to start_date from lead_date because start_date is more reliable

@@ -12,6 +12,7 @@ class Credentials:
     credentials_map = {
     'mofongo':{'user':'root','pass':'salmon01','database':'membership','port':3306,'host':'172.17.0.2'},
     'candela':{'user':'root','pass':'salmon01','database':'membership','port':3306,'host':'172.17.0.2'}
+    
     }
 
     comp_name = platform.node()

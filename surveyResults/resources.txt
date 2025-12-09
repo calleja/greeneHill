@@ -1,0 +1,3 @@
+resources: https://medium.com/@ritesh.110587/correlation-between-categorical-variables-63f6bd9bf2f7
+
+https://towardsdatascience.com/a-new-type-of-categorical-correlation-coefficient-f5782036fc85/

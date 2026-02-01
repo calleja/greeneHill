@@ -1,0 +1,11 @@
+Any good survival curve analysis will concentrate the study on a particular cohort (multiple, independent ones also allowed). This analysis will focus on sign up calendar year. 
+There will be four cohorts:
+- 2020
+- 2021
+- 2022
+- 2024
+
+First, I'll fit a survival curve of first tenure: the fatal event occurs when someone goes on leave, suspends, or cancels membership. I need to be able to measure consured data and fatal events when they happen. 
+
+Censored data: 
+At a high level, I can measure any discontinuities in 'preceding' lead_date and 'following' start_dt for activity for a given mt_email

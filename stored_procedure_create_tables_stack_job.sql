@@ -20,13 +20,14 @@ BEGIN
 
 DROP TABLE IF EXISTS stack_job2;
 
--- join status to type: left join status to type when the status occurs within the range of start_dt & lead_dt of the status type
+-- join status to type: left join status to type when the status occurs within the range of start_dt & lead_dt of the mem_type
 -- TODO: remove any trial related status activity so as not to muck up Membership activity in cases of overlap (ex. a Member converts before trial expires); this will essentially move all trial related activity off
 CREATE TABLE stack_job2 AS
 WITH mt_ms AS (
 SELECT mt.email mt_email, mt.start_dt mt_start_dt, mt.lead_date mt_lead_date, mt.type_clean mt_type_clean, mt.type_raw mt_type_raw, mt.trial_expiration mt_trial_expiration, 
 -- add a cancel flag, which is necessary for cases where there are no mem_status records (typically observed when members' sign up date < 2019)
 CASE WHEN mt.type_raw LIKE '%Cancelled%' THEN 'Y' ELSE 'N' END mt_cancel_flag,
+--ms table fields
 ms.start_dt ms_start_dt, ms.lead_date ms_lead_date, ms.type_clean ms_type_clean, ms.type_raw ms_type_raw  
 FROM consolidated_mem_type mt
 -- from mem_type_1204 mt (older version of one-off)
@@ -38,8 +39,7 @@ order by mt.email, mt.start_dt asc, ms.start_dt asc),
 /* 
 stack the data: re-arrange the joined data from mt_ms 
 similar columns (by record significance, not necessarily name) from the LHS and RHS of the mt_ms join are stacked
-*type_clean* records from mem_status table record 'status change' events
-*type_clean* records from mem_type table record new types of membership (including trial)
+(see below: "type_clean" can come from two sources depeding on value of mt_type_clean, ms_type_clean, ms_type_raw)
 mt_type_clean = null signals records from original mt_type (part of the UNION)
 -- excludes trial activity and only returns activity related to full member-owners
 */

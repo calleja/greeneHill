@@ -58,7 +58,12 @@ AND lower(mt_type_clean) NOT LIKE '%trial'
 AND lower(ms_type_raw) NOT LIKE '%to expired%'), 
 -- penultimo introduced in order to make space for the window functions below 'row_num' and 'total_rows'
 penultimo AS (
-select stacked.*, CASE WHEN activity = mem_type THEN 'initial enrollment' ELSE activity END AS activity_calc, 
+select stacked.*, 
+CASE 
+WHEN activity = mem_type THEN 'initial enrollment' 
+WHEN activity = mem_type AND type_raw LIKE '%Status: Cancelled%' THEN 'cancelled' 
+WHEN activity = mem_type AND type_raw LIKE '%Status: Deactivated%' THEN 'deactivated' 
+ELSE activity END AS activity_calc, 
 -- experimental text 
 TRIM(regexp_substr(type_raw,'(?<=Status:).*$')) AS text_status_indicator
 from stacked 

@@ -38,8 +38,10 @@ AND closer.activity_calc LIKE '%leave%';
 
 
 -- count the total number of accounts that did and did not winback after general leave
+-- collect all the activity_calc per mt_email and activity
 WITH all_recs AS (
 select closer.mt_email, closer.activity, 
+-- related subquery
 (select json_arrayagg(sj2.activity_calc) activity_array from stack_job2 sj2 where sj2.mt_email = closer.mt_email AND sj2.start_dt > closer.start_dt) activity_array
 from stack_job2 closer
 where 1=1 

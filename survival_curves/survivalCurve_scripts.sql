@@ -63,6 +63,11 @@ use membership_ard;
 select * from lead_dt_errors limit 10;
 select * from calendar limit 10;
 
+/* FIXES */
+UPDATE stack_job2
+SET activity_calc = 'cancelled'
+WHERE activity_calc = 'initial enrollment' AND lower(text_status_indicator) like '%cancelled%';
+
 
 
 /*
@@ -106,6 +111,13 @@ where email = 'achomet@gmail.com';
 
 select *
 from consolidated_mem_type
+where email = 'julieseamon@gmail.com'
+order by start_dt;
+
+select activity_calc from stack_job2 sj group by 1;
+
+select *
+from consolidated_mem_status
 where email = 'julieseamon@gmail.com'
 order by start_dt;
 

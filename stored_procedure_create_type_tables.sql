@@ -49,8 +49,14 @@ GROUP BY 1,2,3,4,5,6,7,8,9;
 SET @max_lead_date = (SELECT max(ingest_date) FROM membership_ard.mem_type_new_import);
 
 WITH row_ver AS (
--- changed the ORDER BY clause to start_date from lead_date because start_date is more reliable
-select *, ROW_NUMBER() OVER(PARTITION BY email ORDER BY start_dt asc) row_num, 
+    -- changed the ORDER BY clause to start_date from lead_date because start_date is more reliable
+  select *, 
+    ROW_NUMBER() OVER(PARTITION BY email ORDER BY start_dt asc) row_num, 
+    COUNT(start_dt) OVER(PARTITION BY email) total_rows
+  from consolidated_mem_type_temp
+  WHERE type_clean NOT LIKE ('%trial%')
+),
+
 COUNT(start_dt) OVER(PARTITION BY email) total_rows
 from consolidated_mem_type_temp),
 new_one AS 

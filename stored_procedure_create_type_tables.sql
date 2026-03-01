@@ -104,8 +104,9 @@ AND inner_c.latest_trial2 = row_num_table.latest_trial2);
 
 -- re-run lead_date logic for quality assurance
 WITH prelim AS (
-SELECT temp2.*, LEAD(date_sub(start_dt, interval 1 day)) OVER(PARTITION BY email ORDER BY start_dt) date_lead2
+SELECT temp2.*, LEAD(date_sub(start_dt, interval 1 day)) OVER(PARTITION BY email ORDER BY start_dt asc) date_lead2
 FROM consolidated_mem_type_temp2 temp2
+WHERE type_clean NOT LIKE ('%trial%')
 order by 1,2) 
 UPDATE consolidated_mem_type_temp2 AS status2 
 -- first apply the inner join, then set values of one column (date_lead) to the other col (date_lead2) ON THE SAME ROW; the alternative would be to write a CASE statement, but then I'd end up with a row with which to deal

@@ -56,9 +56,7 @@ WITH row_ver AS (
   from consolidated_mem_type_temp
   WHERE type_clean NOT LIKE ('%trial%')
 ),
-
-COUNT(start_dt) OVER(PARTITION BY email) total_rows
-from consolidated_mem_type_temp),
+-- bottom of the codebase undoes the above row numbers; need to adjust the "prelim" logic
 new_one AS 
 (SELECT *, 
 -- ** DATE EXTENSION LOGIC**: create 'new_date' field that I will use to replace the lead_date for the "last" record for ea email

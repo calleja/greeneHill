@@ -12,9 +12,11 @@ FROM users;
 
 -- TODO place a WHERE clause whereby only mem_type records with null latest_trial2 values are updated; alternatively, where latest_trial2 values don't equal to the true latest trial; the current logic updates ALL records in consolidated_mem_type, which is unnecessary and takes long
 
+/*
 DELIMITER //
 CREATE PROCEDURE update_latest_trial()
 BEGIN
+*/
 -- First, create a temporary table with the latest trial info 
 CREATE TEMPORARY TABLE temp_trial_list AS
 SELECT outer_t.email, outer_t.start_dt, outer_t.type_clean, outer_t.trial_expiration,
@@ -36,5 +38,9 @@ WHERE mt_prod.type_clean NOT LIKE '%trial%';
 
 -- Clean up
 DROP TEMPORARY TABLE IF EXISTS temp_trial_list;
+
+/*
 END //
+
 DELIMITER ;
+*/

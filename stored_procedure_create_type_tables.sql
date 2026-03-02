@@ -12,6 +12,8 @@ expected table names: consolidated_mem_type, (during test) mem_type_0217
 run the stored procedure and ensure that it's stored on the server so that I can call it from python
 TODO: replace the hard-coded table names below
 */
+
+/*
 DROP PROCEDURE IF EXISTS type_table_create;
 
 DELIMITER //
@@ -19,6 +21,7 @@ DELIMITER //
 CREATE PROCEDURE type_table_create()
 
 BEGIN
+*/
 -- STEP 1
 DROP TABLE IF EXISTS consolidated_mem_type_temp; -- if exists
 -- consolidated_mem_type is the legacy prod table. It follows the same schema as mem_type_MMDD
@@ -130,5 +133,9 @@ SELECT type, type_raw, start_dt, lead_date, datetimerange, type_clean, email, tr
 FROM row_num_table 
 WHERE row_num = 1;
 */
+
+/*
 END //
 DELIMITER ;
+
+*/

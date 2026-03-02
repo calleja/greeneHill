@@ -12,7 +12,8 @@ class Credentials:
     credentials_map = {
     'mofongo':{'user':'root','pass':'salmon01','database':'membership','port':3306,'host':'172.17.0.2'},
     'candela':{'user':'root','pass':'salmon01','database':'membership','port':3306,'host':'172.17.0.2'},
-    'membership_ard':{'user':'lcalleja','pass':'salmon01','host':'100.102.223.21','port':3306,'database':'membership_ard'}
+    'membership_ard':{'user':'lcalleja','pass':'salmon01','host':'100.102.223.21','port':3306,'database':'membership_ard'},
+    'Luiss-MacBook-Pro.local':{'user':'root','pass':'persyy','host':'localhost','port':3307,'database':'membership_ard'}
     }
 
     comp_name = platform.node()
@@ -29,6 +30,8 @@ class Credentials:
                 treated_name = 'mofongo'
             elif 'luis' in Credentials.comp_name:
                 treated_name = 'luisito'    
+            elif 'Luiss-MacBook-Pro.local' in Credentials.comp_name:
+                treated_name = 'Luiss-MacBook-Pro.local'    
         
             else:
                 raise KeyError
@@ -38,3 +41,5 @@ class Credentials:
         return Credentials.credentials_map[treated_name]
     
 
+
+# %%

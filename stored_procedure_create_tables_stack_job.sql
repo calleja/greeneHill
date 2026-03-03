@@ -10,6 +10,8 @@
 -- UPDATING STATEMENT to replace the "lead_date" for "TYPE" rows
 -- the lead and start_dt fields are exclusive to either type or status changes, this is bc I related all status changes to the prevailing type and I need the type range in order to accomplish that; this means I HAVE TO recompute the lead/start date post compilation
 -- orchestration.ipynb creates the two consolidated tables (type and status) from the output tables of the respective stored procedures for those tables; code snippet: the copy_rename('consolidated_mem_status_temp2', ['consolidated_mem_status','consolidated_mem_status_temp'], 'consolidated_mem_status')
+
+/*
 DROP PROCEDURE IF EXISTS stackjob_creations;
 
 DELIMITER //
@@ -17,7 +19,7 @@ DELIMITER //
 CREATE PROCEDURE stackjob_creations()
 
 BEGIN 
-
+*/
 DROP TABLE IF EXISTS stack_job2;
 
 -- join status to type: left join status to type when the status occurs within the range of start_dt & lead_dt of the mem_type
@@ -26,7 +28,7 @@ CREATE TABLE stack_job2 AS
 WITH mt_ms AS (
 SELECT mt.email mt_email, mt.start_dt mt_start_dt, mt.lead_date mt_lead_date, mt.type_clean mt_type_clean, mt.type_raw mt_type_raw, mt.trial_expiration mt_trial_expiration, 
 -- add a cancel flag, which is necessary for cases where there are no mem_status records (typically observed when members' sign up date < 2019)
-CASE WHEN mt.type_raw LIKE '%Cancelled%' THEN 'Y' ELSE 'N' END mt_cancel_flag,
+CASE WHEN lower(mt.type_raw) LIKE '%cancelled%' THEN 'Y' ELSE 'N' END mt_cancel_flag,
 --ms table fields
 ms.start_dt ms_start_dt, ms.lead_date ms_lead_date, ms.type_clean ms_type_clean, ms.type_raw ms_type_raw  
 FROM consolidated_mem_type mt
@@ -58,7 +60,13 @@ AND lower(mt_type_clean) NOT LIKE '%trial'
 AND lower(ms_type_raw) NOT LIKE '%to expired%'), 
 -- penultimo introduced in order to make space for the window functions below 'row_num' and 'total_rows'
 penultimo AS (
-select stacked.*, CASE WHEN activity = mem_type THEN 'initial enrollment' ELSE activity END AS activity_calc, 
+select stacked.*, 
+CASE 
+WHEN activity = mem_type AND type_raw LIKE '%Status: Cancelled%' THEN 'cancelled' 
+WHEN activity = mem_type AND type_raw LIKE '%Status: Deactivated%' THEN 'deactivated' 
+WHEN activity = mem_type AND type_raw LIKE '%Status: Deceased%' THEN 'cancelled'
+WHEN activity = mem_type THEN 'initial enrollment' 
+ELSE activity END AS activity_calc, 
 -- experimental text 
 TRIM(regexp_substr(type_raw,'(?<=Status:).*$')) AS text_status_indicator
 from stacked 
@@ -121,6 +129,8 @@ WHERE sj2.activity_calc = 'initial enrollment'
 AND sj2.row_num = 1 
 AND sj2.total_rows = 1;
 
+/*
 
 END //
 DELIMITER ;
+*/

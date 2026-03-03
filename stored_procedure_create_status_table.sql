@@ -9,6 +9,7 @@ expected table names: consolidated_mem_type, (during test) mem_type_0217
 run the stored procedure and ensure that it's stored on the server so that I can call it from python
 TODO: replace the hard-coded table names below ("mem_type_0217")
 */
+/*
 DROP PROCEDURE IF EXISTS status_table_create;
 
 DELIMITER //
@@ -16,6 +17,8 @@ DELIMITER //
 CREATE PROCEDURE status_table_create()
 
 BEGIN
+
+*/
 -- STEP 1
 DROP TABLE IF EXISTS consolidated_mem_status_temp; -- if exists
 -- consolidated_mem_status is the legacy prod table
@@ -109,7 +112,8 @@ FROM row_num_table
 WHERE row_num = 1;
 */
 
+/*
 END //
 DELIMITER ;
-
+*/
 -- CALL status_table_create();

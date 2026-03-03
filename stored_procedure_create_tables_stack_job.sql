@@ -64,6 +64,7 @@ select stacked.*,
 CASE 
 WHEN activity = mem_type AND type_raw LIKE '%Status: Cancelled%' THEN 'cancelled' 
 WHEN activity = mem_type AND type_raw LIKE '%Status: Deactivated%' THEN 'deactivated' 
+WHEN activity = mem_type AND type_raw LIKE '%Status: Deceased%' THEN 'cancelled'
 WHEN activity = mem_type THEN 'initial enrollment' 
 ELSE activity END AS activity_calc, 
 -- experimental text 
